@@ -21,6 +21,7 @@ import pandas as pd
 import requests
 import torch
 import torch.nn as nn
+from IPython.display import display
 from PIL import Image
 from torch.cuda import amp
 
@@ -31,7 +32,7 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
                            xyxy2xywh, yaml_load)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
-
+from typing import Callable, Optional
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -869,3 +870,930 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+
+
+'''新增程序+++++++++++++++++++++++++++++++++++++'''
+class C3CA(C3):
+    # C3 module with CABottleneck()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(CABottleneck(c_, c_, shortcut) for _ in range(n)))
+class CABottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, ratio=32):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+        # self.ca=CoordAtt(c1,c2,ratio)
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        mip = max(8, c1 // ratio)
+        self.conv1 = nn.Conv2d(c1, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+        self.conv_h = nn.Conv2d(mip, c2, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, c2, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        x1 = self.cv2(self.cv1(x))
+        n, c, h, w = x.size()
+        # c*1*W
+        x_h = self.pool_h(x1)
+        # c*H*1
+        # C*1*h
+        x_w = self.pool_w(x1).permute(0, 1, 3, 2)
+        y = torch.cat([x_h, x_w], dim=2)
+        # C*1*(h+w)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+        out = x1 * a_w * a_h
+
+        # out=self.ca(x1)*x1
+        return x + out if self.add else out
+class h_swish(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.sigmoid = h_sigmoid(inplace=inplace)
+
+    def forward(self, x):
+        return x * self.sigmoid(x)
+class h_sigmoid(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_sigmoid, self).__init__()
+        self.relu = nn.ReLU6(inplace=inplace)
+
+    def forward(self, x):
+        return self.relu(x + 3) / 6
+
+
+class CA(nn.Module):
+    # 坐标注意力
+    def __init__(self, inp, oup, reduction=32):
+        super(CA, self).__init__()
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        pool_h = nn.AdaptiveAvgPool2d((h, 1))
+        pool_w = nn.AdaptiveAvgPool2d((1, w))
+        x_h = pool_h(x)
+        x_w = pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return out
+
+# eca注意力
+class ECA(nn.Module):
+    """Constructs a ECA module.
+    Args:
+        channel: Number of channels of the input feature map
+        k_size: Adaptive selection of kernel size
+    """
+
+    def __init__(self, c1, c2, k_size=3):
+        super(ECA, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        # feature descriptor on the global spatial information
+        y = self.avg_pool(x)
+
+        # print(y.shape,y.squeeze(-1).shape,y.squeeze(-1).transpose(-1, -2).shape)
+        # Two different branches of ECA module
+        # 50*C*1*1
+        # 50*C*1
+        # 50*1*C
+        y = self.conv(y.squeeze(-1).transpose(-1, -2)).transpose(-1, -2).unsqueeze(-1)
+
+        # Multi-scale information fusion
+        y = self.sigmoid(y)
+
+        return x * y.expand_as(x)
+class ECABottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, ratio=16, k_size=3):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+        # self.eca=ECA(c1,c2)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x1 = self.cv2(self.cv1(x))
+        # out=self.eca(x1)*x1
+        y = self.avg_pool(x1)
+        y = self.conv(y.squeeze(-1).transpose(-1, -2)).transpose(-1, -2).unsqueeze(-1)
+        y = self.sigmoid(y)
+        out = x1 * y.expand_as(x1)
+
+        return x + out if self.add else out
+
+
+class C3ECA(C3):
+    # C3 module with ECABottleneck()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(ECABottleneck(c_, c_, shortcut) for _ in range(n)))
+class C3CAAM(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(CAAMBottleneck(c_, c_, shortcut) for _ in range(n)))
+class C3_CAAM(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
+        self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.channel_attention = CA(c1, c2)
+
+        self.spatial_attention = SpatialAttention()
+    def forward(self, x):
+
+        out = torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1)
+        out = self.channel_attention(out) * out
+        out = self.spatial_attention(out) * out
+        return self.cv3(out)
+class CAAMBottleneck(nn.Module):
+    # CA注意力+CBAM空间注意力
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+        self.channel_attention = CA(c1, c2)
+
+        self.spatial_attention = SpatialAttention()
+    def forward(self, x):
+        y = self.cv2(self.cv1(x))
+        out = self.channel_attention(y) * y
+        out = self.spatial_attention(out) * out
+        return x + out if self.add else out
+class SpatialAttention(nn.Module):
+    # CBAM的空间注意力
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
+        # (特征图的大小-算子的size+2*padding)/步长+1
+        self.conv = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        # 1*h*w
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        #2*h*w
+        x = self.conv(x)
+        #1*h*w
+        return self.sigmoid(x)
+
+
+class GAMAttention(nn.Module):
+    # GAM 注意力https://paperswithcode.com/paper/global-attention-mechanism-retain-information
+    def __init__(self, c1, c2, group=True, rate=4):
+        super(GAMAttention, self).__init__()
+
+        self.channel_attention = nn.Sequential(
+            nn.Linear(c1, int(c1 / rate)),
+            nn.ReLU(inplace=True),
+            nn.Linear(int(c1 / rate), c1)
+        )
+        self.spatial_attention = nn.Sequential(
+            nn.Conv2d(c1, c1 // rate, kernel_size=7, padding=3, groups=rate) if group else nn.Conv2d(c1, int(c1 / rate),
+                                                                                                     kernel_size=7,
+                                                                                                     padding=3),
+            nn.BatchNorm2d(int(c1 / rate)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(c1 // rate, c2, kernel_size=7, padding=3, groups=rate) if group else nn.Conv2d(int(c1 / rate), c2,
+                                                                                                     kernel_size=7,
+                                                                                                     padding=3),
+            nn.BatchNorm2d(c2)
+        )
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        x_permute = x.permute(0, 2, 3, 1).view(b, -1, c)
+        x_att_permute = self.channel_attention(x_permute).view(b, h, w, c)
+        x_channel_att = x_att_permute.permute(0, 3, 1, 2)
+        x = x * x_channel_att
+
+        x_spatial_att = self.spatial_attention(x).sigmoid()
+        x_spatial_att = channel_shuffle(x_spatial_att, 4)  # last shuffle
+        out = x * x_spatial_att
+        return out
+
+
+def channel_shuffle(x, groups=2):  ##shuffle channel
+    # RESHAPE----->transpose------->Flatten
+    B, C, H, W = x.size()
+    out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
+    out = out.view(B, C, H, W)
+    return out
+
+
+class stem(nn.Module):
+    def __init__(self, c1, c2, act='ReLU6'):
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn = nn.BatchNorm2d(num_features=c2)
+        if act == 'ReLU6':
+            self.act = nn.ReLU6(inplace=True)
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+
+class stemV2(nn.Module):
+    def __init__(self, c1, c2, kernel_size=3, stride=1, groups=1):
+        super().__init__()
+
+        self.conv = nn.Conv2d(c1, c2, kernel_size, stride, padding=(kernel_size - 1) // 2, groups=groups, bias=False)
+        self.bn = nn.BatchNorm2d(c2, eps=1e-3, momentum=0.1)
+        self.act = nn.SiLU(inplace=True)
+
+    def forward(self, x):
+        # print(x.shape)
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.act(x)
+        return x
+
+class MBConvBlock(nn.Module):
+    def __init__(self, inp, final_oup, k, s, expand_ratio, drop_connect_rate, has_se=False):
+        super(MBConvBlock, self).__init__()
+
+        self._momentum = 0.01
+        self._epsilon = 1e-3
+        self.input_filters = inp
+        self.output_filters = final_oup
+        self.stride = s
+        self.expand_ratio = expand_ratio
+        self.has_se = has_se
+        self.id_skip = True  # skip connection and drop connect
+        se_ratio = 0.25
+
+        # Expansion phase
+        oup = inp * expand_ratio  # number of output channels
+        if expand_ratio != 1:
+            self._expand_conv = nn.Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+            self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._momentum, eps=self._epsilon)
+
+        # Depthwise convolution phase
+        self._depthwise_conv = nn.Conv2d(
+            in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
+            kernel_size=k, padding=(k - 1) // 2, stride=s, bias=False)
+        self._bn1 = nn.BatchNorm2d(num_features=oup, momentum=self._momentum, eps=self._epsilon)
+
+        # Squeeze and Excitation layer, if desired
+        if self.has_se:
+            num_squeezed_channels = max(1, int(inp * se_ratio))
+            self.se = SeBlock(oup, 4)
+
+        # Output phase
+        self._project_conv = nn.Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+        self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._momentum, eps=self._epsilon)
+        self._relu = nn.ReLU6(inplace=True)
+
+        self.drop_connect = drop_connect(drop_connect_rate)
+
+    def forward(self, x, drop_connect_rate=None):
+        """
+        :param x: input tensor
+        :param drop_connect_rate: drop connect rate (float, between 0 and 1)
+        :return: output of block
+        """
+
+        # Expansion and Depthwise Convolution
+        identity = x
+        if self.expand_ratio != 1:
+            x = self._relu(self._bn0(self._expand_conv(x)))
+        x = self._relu(self._bn1(self._depthwise_conv(x)))
+
+        # Squeeze and Excitation
+        if self.has_se:
+            x = self.se(x)
+
+        x = self._bn2(self._project_conv(x))
+
+        # Skip connection and drop connect
+        if self.id_skip and self.stride == 1  and self.input_filters == self.output_filters:
+            if drop_connect_rate:
+                x = self.drop_connect(x, training=self.training)
+            x += identity  # skip connection
+        return x
+class drop_connect:
+    def __init__(self, drop_connect_rate):
+        self.drop_connect_rate = drop_connect_rate
+
+    def forward(self, x, training):
+        if not training:
+            return x
+        keep_prob = 1.0 - self.drop_connect_rate
+        batch_size = x.shape[0]
+        random_tensor = keep_prob
+        random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=x.dtype, device=x.device)
+        binary_mask = torch.floor(random_tensor) # 1
+        x = (x / keep_prob) * binary_mask
+        return x
+class SeBlock(nn.Module):
+    def __init__(self, in_channel, reduction=4):
+        super().__init__()
+        self.Squeeze = nn.AdaptiveAvgPool2d(1)
+
+        self.Excitation = nn.Sequential()
+        self.Excitation.add_module('FC1', nn.Conv2d(in_channel, in_channel // reduction, kernel_size=1))  # 1*1卷积与此效果相同
+        self.Excitation.add_module('ReLU', nn.ReLU())
+        self.Excitation.add_module('FC2', nn.Conv2d(in_channel // reduction, in_channel, kernel_size=1))
+        self.Excitation.add_module('Sigmoid', nn.Sigmoid())
+
+    def forward(self, x):
+        y = self.Squeeze(x)
+        ouput = self.Excitation(y)
+        return x*(ouput.expand_as(x))
+
+
+
+
+
+def drop_path(x, drop_prob: float = 0., training: bool = False):
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    random_tensor.floor_()  # binarize
+
+    output = x.div(keep_prob) * random_tensor
+    return output
+
+
+class DropPath(nn.Module):
+
+    def __init__(self, drop_prob=None):
+        super(DropPath, self).__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        return drop_path(x, self.drop_prob, self.training)
+
+
+class SqueezeExcite_efficientv2(nn.Module):
+    def __init__(self, c1, c2, se_ratio=0.25, act_layer=nn.ReLU):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.gate_fn = nn.Sigmoid()
+        reduced_chs = int(c1 * se_ratio)
+        self.conv_reduce = nn.Conv2d(c2, reduced_chs, 1, bias=True)
+        self.act1 = act_layer(inplace=True)
+        self.conv_expand = nn.Conv2d(reduced_chs, c2, 1, bias=True)
+
+    def forward(self, x):
+        x_se = self.avg_pool(x)
+        x_se = self.conv_reduce(x_se)
+        x_se = self.act1(x_se)
+        x_se = self.conv_expand(x_se)
+        x_se = self.gate_fn(x_se)
+        x = x * (x_se.expand_as(x))
+        return x
+
+
+class FusedMBConv(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1, expansion=1, drop_connect_rate=0.2):
+        super().__init__()
+
+        assert s in [1, 2]
+
+        self.has_shortcut = (s == 1 and c1 == c2)
+        expanded_c = c1 * expansion
+        self.has_expansion = expansion>1
+        if self.has_expansion:
+            self.expansion_conv = stemV2(c1, expanded_c, kernel_size=k, stride=s)
+            self.project_conv = stemV2(expanded_c, c2, kernel_size=1, stride=1)
+
+        else:
+            self.project_conv = stemV2(c1, c2, kernel_size=k, stride=s)
+
+        self.drop_connect_rate = drop_connect_rate
+        if self.has_shortcut and drop_connect_rate > 0:
+            self.dropout = DropPath(drop_connect_rate)
+
+    def forward(self, x):
+        if self.has_expansion:
+            result = self.expansion_conv(x)
+            result = self.project_conv(result)
+        else:
+            result = self.project_conv(x)
+
+        if self.has_shortcut:
+            if self.drop_connect_rate > 0:
+                result = self.dropout(result)
+
+            result += x
+
+        return result
+
+class ConvBNAct(nn.Module):
+    def __init__(self,
+                 in_planes: int,
+                 out_planes: int,
+                 kernel_size: int = 3,
+                 stride: int = 1,
+                 groups: int = 1,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None,
+                 activation_layer: Optional[Callable[..., nn.Module]] = None):
+        super(ConvBNAct, self).__init__()
+
+        padding = (kernel_size - 1) // 2
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        if activation_layer is None:
+            activation_layer = nn.SiLU  # alias Swish  (torch>=1.7)
+
+        self.conv = nn.Conv2d(in_channels=in_planes,
+                              out_channels=out_planes,
+                              kernel_size=kernel_size,
+                              stride=stride,
+                              padding=padding,
+                              groups=groups,
+                              bias=False)
+
+        self.bn = norm_layer(out_planes)
+        self.act = activation_layer()
+
+    def forward(self, x):
+        result = self.conv(x)
+        result = self.bn(result)
+        result = self.act(result)
+
+        return result
+
+class MBConv(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1, expansion=1, se_ration=0, dropout_rate=0.2, drop_connect_rate=0.2):
+        super().__init__()
+
+        assert s in [1, 2]
+
+        self.has_shortcut = (s == 1 and c1 == c2)
+        # print(c1, c2, k, s, expansion)
+
+        expanded_c = c1 * expansion
+        self.expansion_conv = stemV2(c1, expanded_c, kernel_size=1)
+        self.dw_conv = stemV2(expanded_c, expanded_c, kernel_size=k, stride=s, groups=expanded_c)
+
+        self.se = SqueezeExcite_efficientv2(c1, expanded_c, se_ration) if se_ration > 0 else nn.Identity()
+
+        self.project_conv = stemV2(expanded_c, c2, kernel_size=1, stride=1)
+
+        self.drop_connect_rate = drop_connect_rate
+        if self.has_shortcut and drop_connect_rate > 0:
+            self.dropout = DropPath(drop_connect_rate)
+
+    def forward(self, x):
+
+        # print(x.shape)
+        result = self.expansion_conv(x)
+        result = self.dw_conv(result)
+
+        result = self.se(result)
+        result = self.project_conv(result)
+
+        if self.has_shortcut:
+            if self.drop_connect_rate > 0:
+                result = self.dropout(result)
+
+            result += x
+
+        return result
+class SqueezeExcite(nn.Module):
+    def __init__(self,
+                 input_c: int,   # block input channel
+                 expand_c: int,  # block expand channel
+                 se_ratio: float = 0.25):
+        super(SqueezeExcite, self).__init__()
+        squeeze_c = int(input_c * se_ratio)
+        self.conv_reduce = nn.Conv2d(expand_c, squeeze_c, 1)
+        self.act1 = nn.SiLU()  # alias Swish
+        self.conv_expand = nn.Conv2d(squeeze_c, expand_c, 1)
+        self.act2 = nn.Sigmoid()
+
+    def forward(self, x):
+        scale = x.mean((2, 3), keepdim=True)
+        scale = self.conv_reduce(scale)
+        scale = self.act1(scale)
+        scale = self.conv_expand(scale)
+        scale = self.act2(scale)
+        return scale * x
+
+class sa_layer(nn.Module):
+    """Constructs a Channel Spatial Group module.
+    Args:
+        k_size: Adaptive selection of kernel size
+        SA-NET：融合空域与通道注意力，提出置换注意力机制
+    """
+
+    def __init__(self, channel, groups=64):
+        super(sa_layer, self).__init__()
+        self.groups = groups
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.cweight = Parameter(torch.zeros(1, channel // (2 * groups), 1, 1))
+        self.cbias = Parameter(torch.ones(1, channel // (2 * groups), 1, 1))
+        self.sweight = Parameter(torch.zeros(1, channel // (2 * groups), 1, 1))
+        self.sbias = Parameter(torch.ones(1, channel // (2 * groups), 1, 1))
+
+        self.sigmoid = nn.Sigmoid()
+        self.gn = nn.GroupNorm(channel // (2 * groups), channel // (2 * groups))
+
+    @staticmethod
+    def channel_shuffle(x, groups):
+        b, c, h, w = x.shape
+
+        x = x.reshape(b, groups, -1, h, w)
+        x = x.permute(0, 2, 1, 3, 4)
+
+        # flatten
+        x = x.reshape(b, -1, h, w)
+
+        return x
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+
+        x = x.reshape(b * self.groups, -1, h, w)
+        x_0, x_1 = x.chunk(2, dim=1)
+
+        # channel attention
+        xn = self.avg_pool(x_0)
+        xn = self.cweight * xn + self.cbias
+        xn = x_0 * self.sigmoid(xn)
+
+        # spatial attention
+        xs = self.gn(x_1)
+        xs = self.sweight * xs + self.sbias
+        xs = x_1 * self.sigmoid(xs)
+
+        # concatenate along channel axis
+        out = torch.cat([xn, xs], dim=1)
+        out = out.reshape(b, -1, h, w)
+
+        out = self.channel_shuffle(out, 2)
+        return out
+# 空间金字塔切分注意力模块
+# https://github.com/songjiahao-wq/EPSANet
+class SE(nn.Module):
+    def __init__(self, c1, c2, ratio=16):
+        super(SE, self).__init__()
+        #c*1*1
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.l1 = nn.Linear(c1, c1 // ratio, bias=False)
+        self.relu = nn.ReLU(inplace=True)
+        self.l2 = nn.Linear(c1 // ratio, c1, bias=False)
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avgpool(x).view(b, c)
+        y = self.l1(y)
+        y = self.relu(y)
+        y = self.l2(y)
+        y = self.sig(y)
+        y = y.view(b, c, 1, 1)
+        return x * y.expand_as(x)
+def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1, groups=1):
+    """standard convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
+                     padding=padding, dilation=dilation, groups=groups, bias=False)
+class PSAModule(nn.Module):
+
+    def __init__(self, inplans, planes, conv_kernels=[3, 5, 7, 9], stride=1, conv_groups=[1, 4, 8, 16]):
+        super(PSAModule, self).__init__()
+        self.conv_1 = conv(inplans, planes//4, kernel_size=conv_kernels[0], padding=conv_kernels[0]//2,
+                            stride=stride, groups=conv_groups[0])
+        self.conv_2 = conv(inplans, planes//4, kernel_size=conv_kernels[1], padding=conv_kernels[1]//2,
+                            stride=stride, groups=conv_groups[1])
+        self.conv_3 = conv(inplans, planes//4, kernel_size=conv_kernels[2], padding=conv_kernels[2]//2,
+                            stride=stride, groups=conv_groups[2])
+        self.conv_4 = conv(inplans, planes//4, kernel_size=conv_kernels[3], padding=conv_kernels[3]//2,
+                            stride=stride, groups=conv_groups[3])
+        self.se = SE(planes // 4)
+        self.split_channel = planes // 4
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        x1 = self.conv_1(x)
+        x2 = self.conv_2(x)
+        x3 = self.conv_3(x)
+        x4 = self.conv_4(x)
+
+        feats = torch.cat((x1, x2, x3, x4), dim=1)
+        feats = feats.view(batch_size, 4, self.split_channel, feats.shape[2], feats.shape[3])
+
+        x1_se = self.se(x1)
+        x2_se = self.se(x2)
+        x3_se = self.se(x3)
+        x4_se = self.se(x4)
+
+        x_se = torch.cat((x1_se, x2_se, x3_se, x4_se), dim=1)
+        attention_vectors = x_se.view(batch_size, 4, self.split_channel, 1, 1)
+        attention_vectors = self.softmax(attention_vectors)
+        feats_weight = feats * attention_vectors
+        for i in range(4):
+            x_se_weight_fp = feats_weight[:, i, :, :]
+            if i == 0:
+                out = x_se_weight_fp
+            else:
+                out = torch.cat((x_se_weight_fp, out), 1)
+
+        return out
+# GhostNetV2
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
+    """3x3 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=dilation, groups=groups, bias=False, dilation=dilation)
+
+
+def conv1x1(in_planes, out_planes, stride=1):
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+class GHOSTBottleneck(nn.Module):
+    expansion = 1
+    __constants__ = ['downsample']
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None, group_width=1,
+                 dilation=1, norm_layer=None):
+        super(GHOSTBottleneck, self).__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        width = planes * self.expansion
+        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv1x1(inplanes, width)
+        self.bn1 = norm_layer(width)
+        self.conv2 = conv3x3(width, width, stride, width // min(width, group_width), dilation)
+        self.bn2 = norm_layer(width)
+        self.conv3 = conv1x1(width, planes)
+        self.bn3 = norm_layer(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+
+# class LambdaLayer(nn.Module):
+#     def __init__(self, lambd):
+#         super(LambdaLayer, self).__init__()
+#         self.lambd = lambd
+#
+#     def forward(self, x):
+#         return self.lambd(x)
+
+
+class Stage(nn.Module):
+
+    def __init__(self, block, inplanes, planes, group_width, blocks, stride=1, dilate=False, cheap_ratio=0.5):
+        super(Stage, self).__init__()
+        norm_layer = nn.BatchNorm2d
+        downsample = None
+        self.dilation = 1
+        previous_dilation = self.dilation
+        self.inplanes = inplanes
+        if dilate:
+            self.dilation *= stride
+            stride = 1
+        if stride != 1 or self.inplanes != planes:
+            downsample = nn.Sequential(
+                conv1x1(inplanes, planes, stride),
+                norm_layer(planes),
+            )
+
+        self.base = block(inplanes, planes, stride, downsample, group_width,
+                          previous_dilation, norm_layer)
+        self.end = block(planes, planes, group_width=group_width,
+                         dilation=self.dilation,
+                         norm_layer=norm_layer)
+
+        group_width = int(group_width * 0.75)
+        raw_planes = int(planes * (1 - cheap_ratio) / group_width) * group_width
+        cheap_planes = planes - raw_planes
+        self.cheap_planes = cheap_planes
+        self.raw_planes = raw_planes
+
+        self.merge = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(planes + raw_planes * (blocks - 2), cheap_planes,
+                      kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(cheap_planes),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(cheap_planes, cheap_planes, kernel_size=1, bias=False),
+            nn.BatchNorm2d(cheap_planes),
+        )
+        self.cheap = nn.Sequential(
+            nn.Conv2d(cheap_planes, cheap_planes,
+                      kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(cheap_planes),
+        )
+        self.cheap_relu = nn.ReLU(inplace=True)
+
+        layers = []
+        # downsample = nn.Sequential(
+        #     LambdaLayer(lambda x: x[:, :raw_planes])
+        # )
+
+        layers = []
+        layers.append(block(raw_planes, raw_planes, 1, downsample, group_width,
+                            self.dilation, norm_layer))
+        inplanes = raw_planes
+        for _ in range(2, blocks - 1):
+            layers.append(block(inplanes, raw_planes, group_width=group_width,
+                                dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, input):
+        x0 = self.base(input)
+
+        m_list = [x0]
+        e = x0[:, :self.raw_planes]
+        for l in self.layers:
+            e = l(e)
+            m_list.append(e)
+        m = torch.cat(m_list, 1)
+        m = self.merge(m)
+
+        c = x0[:, self.raw_planes:]
+        c = self.cheap_relu(self.cheap(c) + m)
+
+        x = torch.cat((e, c), 1)
+        x = self.end(x)
+        return x
+
+
+class GGhostRegNet(nn.Module):
+
+    def __init__(self, block, layers, widths, layer_number, num_classes=1000, zero_init_residual=True,
+                 group_width=8, replace_stride_with_dilation=None,
+                 norm_layer=None):
+        super(GGhostRegNet, self).__init__()
+        # ---------------------------------
+        self.layer_number = layer_number
+        # --------------------------------------
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        self._norm_layer = norm_layer
+
+        self.inplanes = 24
+        self.dilation = 1
+        if replace_stride_with_dilation is None:
+            # each element in the tuple indicates if we should replace
+            # the 2x2 stride with a dilated convolution instead
+            replace_stride_with_dilation = [False, False, False, False]
+        if len(replace_stride_with_dilation) != 4:
+            raise ValueError("replace_stride_with_dilation should be None "
+                             "or a 4-element tuple, got {}".format(replace_stride_with_dilation))
+        self.group_width = group_width
+        # self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=2, padding=1,
+        #                        bias=False)
+        # self.bn1 = norm_layer(self.inplanes)
+        # self.relu = nn.ReLU(inplace=True)
+        if self.layer_number in [0]:
+            self.layer1 = self._make_layer(block, widths[0], layers[0], stride=1,
+                                           dilate=replace_stride_with_dilation[0])
+
+
+        if self.layer_number in [1]:
+            self.inplanes = widths[0]
+            if layers[1] > 2:
+                self.layer2 = Stage(block, self.inplanes, widths[1], group_width, layers[1], stride=1,
+                                    dilate=replace_stride_with_dilation[1], cheap_ratio=0.5)
+            else:
+                self.layer2 = self._make_layer(block, widths[1], layers[1], stride=1,
+                                               dilate=replace_stride_with_dilation[1])
+        if self.layer_number in [2]:
+            self.inplanes = widths[1]
+            self.layer3 = Stage(block, self.inplanes, widths[2], group_width, layers[2], stride=1,
+                                dilate=replace_stride_with_dilation[2], cheap_ratio=0.5)
+
+        if self.layer_number in [3]:
+            self.inplanes = widths[2]
+            if layers[3] > 2:
+                self.layer4 = Stage(block, self.inplanes, widths[3], group_width, layers[3], stride=1,
+                                    dilate=replace_stride_with_dilation[3], cheap_ratio=0.5)
+            else:
+                self.layer4 = self._make_layer(block, widths[3], layers[3], stride=1,
+                                               dilate=replace_stride_with_dilation[3])
+        # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        # self.dropout = nn.Dropout(0.2)
+        # self.fc = nn.Linear(widths[-1] * block.expansion, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        norm_layer = self._norm_layer
+        downsample = None
+        previous_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
+        if stride != 1 or self.inplanes != planes:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes, stride),
+                norm_layer(planes),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample, self.group_width,
+                            previous_dilation, norm_layer))
+        self.inplanes = planes
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes, group_width=self.group_width,
+                                dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
+
+    def _forward_impl(self, x):
+
+        if self.layer_number in [0]:
+            x = self.layer1(x)
+        if self.layer_number in [1]:
+            x = self.layer2(x)
+        if self.layer_number in [2]:
+            x = self.layer3(x)
+        if self.layer_number in [3]:
+            x = self.layer4(x)
+
+        return x
+
+    def forward(self, x):
+        return self._forward_impl(x)

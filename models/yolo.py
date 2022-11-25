@@ -307,6 +307,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    GHOSTBottleneck_layers, widths = [], []
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
@@ -316,15 +317,25 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x}:
+                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
+            CA, C3ECA, ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
+            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x,
+                     C3CA, C3ECA, C3CAAM}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
+        elif m is GGhostRegNet:
+            widths.append(args[0])
+            if args[1] != 0:
+                widths[-2] = ch[f]
+            block = GHOSTBottleneck
+            GHOSTBottleneck_layers.append(n)
+            args = [block, GHOSTBottleneck_layers, widths, args[1]]
+            n = 1
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
