@@ -1,0 +1,2 @@
+python classify/train.py --model yolov5s-cls.pt --data D:\__easyHelper__\minist\mnist --epochs 5 --img 224
+python classify/predict.py --weights runs/train-cls/exp6/weights/best.pt --source D:\__easyHelper__\classify_data\test\daisy
