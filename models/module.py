@@ -13,4 +13,6 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 from models.Models.Litemodel import ADD
 from models.Models.research import Concat_bifpn
+from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
+
 
