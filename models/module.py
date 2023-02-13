@@ -9,5 +9,5 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC, \
                  SwinTransformerBlock, \
                  SwinTransformer2Block
-
+from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 
