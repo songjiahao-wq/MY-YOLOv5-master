@@ -6,7 +6,7 @@ Activation functions
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import numpy as np
 
 class SiLU(nn.Module):
     # SiLU activation https://arxiv.org/pdf/1606.08415.pdf
@@ -101,3 +101,13 @@ class MetaAconC(nn.Module):
         beta = torch.sigmoid(self.fc2(self.fc1(y)))  # bug patch BN layers removed
         dpx = (self.p1 - self.p2) * x
         return dpx * torch.sigmoid(beta * dpx) + self.p2 * x
+"""本次改进为GELU。原文链接：https://arxiv.org/abs/1606.08415
+这种新颖的非线性与ReLU或ELU在计算机视觉、自然语言处理和自动语音识别等任务中的模型相匹配或超过。
+"""
+class GELU(nn.Module):
+    def __init__(self):
+        super(GELU, self).__init__()
+
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
+

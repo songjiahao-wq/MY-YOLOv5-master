@@ -9,8 +9,11 @@ import torch.nn.functional as F
 
 ##### basic ####
 
-def autopad(k, p=None):  # kernel, padding
+def autopad(k, p=None,d=1):  # kernel, padding
     # Pad to 'same'
+    if d > 1:
+        k = d * (k - 1) + 1 if isinstance(k, int) else [d * (x - 1) + 1 for x in k]  # actual kernel-size
+
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
@@ -1804,4 +1807,48 @@ class SwinTransformer2Block(nn.Module):
         x = self.blocks(x)
         return x
 
-##### end of swin transformer v2 #####   
+##### end of swin transformer v2 #####
+"""
+解决问题：小目标由于携带信息少导致特征表达能力较弱，经过多层次的卷积操作后能提取到的特征较少，
+因此检测困难。利用自校正卷积取代特征提取网络中的常规卷积，以扩展感受野丰富输出，进而强化对弱特征的提取能力。
+主要原理：
+论文：http://mftp.mmcheng.net/Papers/20cvprSCNet.pdf
+"""
+class SCConv(nn.Module):
+    def __init__(self, inplanes, planes,k=3, stride=1, padding=None, dilation=1, groups=1, pooling_r=3, norm_layer=nn.BatchNorm2d):
+        super(SCConv, self).__init__()
+        padding = autopad(k, padding, dilation)
+        self.inplanes, self.planes = inplanes, planes
+        self.conv1x1 = nn.Conv2d(inplanes, planes, kernel_size=1)
+        if self.inplanes != planes:
+            inplanes = planes
+        self.k2 = nn.Sequential(
+            nn.AvgPool2d(kernel_size=pooling_r, stride=pooling_r),
+            nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                      padding=padding, dilation=dilation,
+                      groups=groups, bias=False),
+            norm_layer(planes),
+        )
+        self.k3 = nn.Sequential(
+            nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                      padding=padding, dilation=dilation,
+                      groups=groups, bias=False),
+            norm_layer(planes),
+        )
+        self.k4 = nn.Sequential(
+            nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride,
+                      padding=padding, dilation=dilation,
+                      groups=groups, bias=False),
+            norm_layer(planes),
+        )
+
+    def forward(self, x):
+        identity = x
+        if identity.size()[1] < self.planes:
+            identity = self.conv1x1(identity)
+        out = torch.sigmoid(
+            torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
+        out = torch.mul(self.k3(x), out)  # k3 * sigmoid(identity + k2)
+        out = self.k4(out)  # k4
+
+        return out
