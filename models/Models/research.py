@@ -58,7 +58,7 @@ class Concat_bifpn(nn.Module):
         self.act= nn.ReLU()
 
     def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat
-        #print("bifpn:",x.shape)
+        # print("bifpn:",x.shape)
         if len(x) == 2:
 
             w = self.w1_weight
