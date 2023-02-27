@@ -4,10 +4,10 @@ import random
 import os
 
 # 原始路径
-image_original_path = r'F:\sjh\code\my\datasets\VOC_five\images/'
-label_original_path = r'F:\sjh\code\my\datasets\VOC_five\labels/'
+image_original_path = r'D:\xian_yu\road_defect\images/'
+label_original_path = r'D:\xian_yu\road_defect\labels/'
 # 复制文件总路径
-src_root = r'F:\sjh\code\my\datasets\VOC_five\VOC_fiveyolo'
+src_root = r'D:\xian_yu\road_defect_yolo/'
 # 训练集路径
 train_image_path = src_root + '/images/train/'
 train_label_path = src_root + '/labels/train/'
@@ -19,9 +19,9 @@ test_image_path = src_root + '/images/test/'
 test_label_path = src_root + '/labels/test/'
 
 # 数据集划分比例，训练集75%，验证集15%，测试集15%
-train_percent = 0.85
-val_percent = 0.0
-test_percent = 0.15
+train_percent = 0.80
+val_percent = 0.2
+test_percent = 0.0
 # 数据集划分数量，训练集800，验证集800，测试集800
 # num_train = 850
 # num_val = 800
