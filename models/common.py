@@ -219,6 +219,7 @@ class SPPCSPC(nn.Module):
         y1 = self.cv6(self.cv5(torch.cat([x1] + [m(x1) for m in self.m], 1)))
         y2 = self.cv2(x)
         return self.cv7(torch.cat((y1, y2), dim=1))
+
 class SPP(nn.Module):
     # Spatial Pyramid Pooling (SPP) layer https://arxiv.org/abs/1406.4729
     def __init__(self, c1, c2, k=(5, 9, 13)):
@@ -1825,6 +1826,43 @@ class SEAttion(nn.Module):
         x_se = self.gate_fn(x_se)
         x = x * (x_se.expand_as(x))
         return x
+class SE_SPPFCSPC(nn.Module):
+    # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=5):
+        super(SE_SPPFCSPC, self).__init__()
+        c_ = int( 2* c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, g=4)
+        self.cv2 = Conv(c1, c_, 1, g=4)
+        self.cv3 = Conv(c_, c_, 3, g=4)
+        self.cv4 = Conv(c_, c_, 1, g=4)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        # self.m = nn.AvgPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.cv5 = Conv(4 * c_, c_, 1, g=4)
+        self.cv6 = Conv(c_, c_, 3, g=4)
+        self.cv7 = Conv(2 * c_, c2, 1, g=4)
+        self.CA = CA(4*c_,4*c_)
+        # self.CA = CBAM(4*c_,c_)
+        # self.CA = ECA(4*c_,4*c_)
+        # self.CA = SE(4*c_,c_)
+        self.mean = nn.AdaptiveAvgPool2d((1, 1))  # (1,1)means ouput_dim
+        self.conv = nn.Conv2d(c1, c_, 1, 1)
+    def forward(self, x):
+        x1 = self.cv4(self.cv3(self.cv1(x)))
+
+        # size = x.shape[2:]
+        # image_features = self.mean(x)
+        # image_features = self.conv(image_features)
+        # z1 = F.interpolate(image_features, size=size, mode='bilinear')
+
+
+        x2 = self.m(x1)
+        x3 = self.m(x2)
+        x4 = torch.cat((x1,x2,x3, self.m(x3)),1)
+        # x4 = torch.cat((x1,x2,x3, self.m(x3), z1),1)
+        x4 = self.CA(x4)
+        y1 = self.cv6(self.cv5(x4))
+        y2 = self.cv2(x)
+        return self.cv7(torch.cat((y1, y2), dim=1))
 class SE_SPPFCSPC(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=5):

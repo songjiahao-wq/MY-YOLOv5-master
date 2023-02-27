@@ -320,7 +320,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                 BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
             CA, C3ECA, ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
-            SCConv}:#添加模块
+            SCConv, GAMAttention, nn.ConvTranspose2d}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -330,6 +330,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      C3CA, C3ECA, C3CAAM}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
+            elif m is nn.ConvTranspose2d:
+                if len(args) >= 7:
+                    args[6] = make_divisible(args[6] * gw, 8)
+                    # args[6] = math.gcd(c1, c2)
         elif m is GGhostRegNet:
             widths.append(args[0])
             if args[1] != 0:
@@ -342,6 +346,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
+        elif m is ADD:
+            c2 = sum([ch[x] for x in f]) // 2
         # TODO: channel, gw, gd
         elif m in {Detect, Segment}:
             args.append([ch[x] for x in f])
