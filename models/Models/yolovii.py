@@ -1820,8 +1820,8 @@ class SCConv(nn.Module):
         padding = autopad(k, padding, dilation)
         self.inplanes, self.planes = inplanes, planes
         self.conv1x1 = nn.Conv2d(inplanes, planes, kernel_size=1)
-        if self.inplanes != planes:
-            inplanes = planes
+        # if self.inplanes != planes:
+        #     inplanes = planes
         self.k2 = nn.Sequential(
             nn.AvgPool2d(kernel_size=pooling_r, stride=pooling_r),
             nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
@@ -1841,14 +1841,31 @@ class SCConv(nn.Module):
                       groups=groups, bias=False),
             norm_layer(planes),
         )
-
+        self.k4_2 =nn.Sequential(
+            nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
+                      padding=padding, dilation=dilation,
+                      groups=groups, bias=False),
+            norm_layer(planes),
+        )
     def forward(self, x):
-        identity = x
+        identity = x #(c1,h,w)
         if identity.size()[1] < self.planes:
-            identity = self.conv1x1(identity)
-        out = torch.sigmoid(
-            torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
-        out = torch.mul(self.k3(x), out)  # k3 * sigmoid(identity + k2)
-        out = self.k4(out)  # k4
+            identity = self.conv1x1(identity) #identity=(c2,h,w)
+            out = torch.sigmoid( #F.interpolate(self.k2(x), identity.size()[2:])=(c2,h/2,w/2)-(c2,h,w),torch.add=(c2,2h,2w)
+                torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
+            out = torch.mul(self.k3(x), out)  # k3 * sigmoid(identity + k2)=(c2,2h,2w)
 
+            out = self.k4_2(out)  # k4
+        else:
+            out = torch.sigmoid(
+                torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
+            out = torch.mul(self.k3(x), out)  # k3 * sigmoid(identity + k2)
+            out = self.k4(out)  # k4
         return out
+
+
+if __name__ =="__main__":
+    input = torch.randn(1,64,40,40)
+    model = SCConv(64,128,3,2)
+    output = model(input)
+    print(output)
