@@ -34,6 +34,7 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
 from typing import Callable, Optional
+from models.Models.SwinTransformer import SwinTransformerLayer
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -2126,3 +2127,533 @@ class InvertedResidual(nn.Module):  # 该模块主要实现了倒残差模块
             return x + self.conv(x)
         else:
             return self.conv(x)  # 否则不做操作
+#mobile netv3*********************************************
+class h_sigmoid(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_sigmoid, self).__init__()
+        self.relu = nn.ReLU6(inplace=inplace)
+
+    def forward(self, x):
+        return self.relu(x + 3) / 6
+
+
+class h_swish(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.sigmoid = h_sigmoid(inplace=inplace)
+
+    def forward(self, x):
+        return x * self.sigmoid(x)
+
+
+class SELayer(nn.Module):
+    def __init__(self, channel, reduction=4):
+        super(SELayer, self).__init__()
+        # Squeeze
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        # Excitation(FC+ReLU+FC+Sigmoid)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel),
+            h_sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x)
+        y = y.view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y
+
+
+class conv_bn_hswish(nn.Module):
+    """
+    This equals to
+    def conv_3x3_bn(inp, oup, stride):
+        return nn.Sequential(
+            nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
+            nn.BatchNorm2d(oup),
+            h_swish()
+        )
+    """
+
+    def __init__(self, c1, c2, stride):
+        super(conv_bn_hswish, self).__init__()
+        self.conv = nn.Conv2d(c1, c2, 3, stride, 1, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = h_swish()
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+    def fuseforward(self, x):
+        return self.act(self.conv(x))
+
+
+class MobileNet_Block(nn.Module):
+    def __init__(self, inp, oup, hidden_dim, kernel_size, stride, use_se, use_hs):
+        super(MobileNet_Block, self).__init__()
+        assert stride in [1, 2]
+
+        self.identity = stride == 1 and inp == oup
+
+        if inp == hidden_dim:
+            self.conv = nn.Sequential(
+                # dw
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
+                          bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
+                # Squeeze-and-Excite
+                SELayer(hidden_dim) if use_se else nn.Sequential(),
+                # pw-linear
+                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup),
+            )
+        else:
+
+            self.conv = nn.Sequential(
+                # pw
+                nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
+                # dw
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
+                          bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                # Squeeze-and-Excite
+                SELayer(hidden_dim) if use_se else nn.Sequential(),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
+                # pw-linear
+                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup),
+            )
+
+    def forward(self, x):
+        y = self.conv(x)
+        if self.identity:
+            return x + y
+        else:
+            return y
+#****************************************************
+#c3-swin**************************************
+class CTR3(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1,e=0.5,e2=1,w=20,h=20):  # ch_in, ch_out, number, , expansion,w,h
+        super(CTR3, self).__init__()
+        c_ = int(c2*e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
+
+        self.m = nn.Sequential(*[BottleneckTransformer(c_ ,c_, stride=1, heads=4,mhsa=True,resolution=(w,h),expansion=e2) for _ in range(n)])
+        # self.m = nn.Sequential(*[BottleneckTransformer(c_ ,c_, stride=1, heads=4,mhsa=True,resolution=(w,h),expansion=e2) for _ in range(n)])
+        # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
+
+    def forward(self, x):
+        #print("CTR3-INPUT:",x.shape)
+       # return self.cv3
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
+class BottleneckTransformer(nn.Module):
+    # Transformer bottleneck
+    # expansion = 1
+
+    def __init__(self, c1, c2, stride=1, heads=4, mhsa=True, resolution=None, expansion=1):
+        super(BottleneckTransformer, self).__init__()
+        c_ = int(c2 * expansion)
+        a = False
+        attn_dim_out = 4 * 128
+        self.cv1 = Conv(c1, c_, 1, 1)
+        # self.bn1 = nn.BatchNorm2d(c2)
+        if not mhsa:
+            self.cv2 = Conv(c_, c2, 3, 1)
+        elif a:
+            self.cv2 = nn.ModuleList()
+            self.cv2.append(MHSA(c2, width=int(resolution[0]), height=int(resolution[1]), heads=heads))
+            if stride == 2:
+                self.cv2.append(nn.AvgPool2d(2, 2))
+            self.cv2 = nn.Sequential(*self.cv2)
+        else:
+            self.cv2 = nn.ModuleList()
+            self.cv2.append(MHSA(c2, width=int(resolution[0]), height=int(resolution[1]), heads=heads))
+            if stride == 2:
+                self.cv2.append(nn.AvgPool2d(2, 2))
+            self.cv2 = nn.Sequential(*self.cv2,
+                                     nn.BatchNorm2d(c2),
+                                     nn.ReLU(),
+                                     # nn.Conv2d(attn_dim_out, expansion * c2, kernel_size=1, stride=stride),
+                                     )
+
+        # self.bn2 = nn.BatchNorm2d(planes)
+        # self.cv3 = nn.Conv2d(planes, expansion * planes, kernel_size=1, bias=False)
+        # self.bn3 = nn.BatchNorm2d(expansion * planes)
+        # self.shortcut = nn.Sequential()
+        self.shortcut = c1 == c2
+        if stride != 1 or c1 != expansion * c2:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(c1, expansion * c2, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(expansion * c2)
+            )
+        # self.fc1 = nn.Linear(c2, c2)
+
+    def forward(self, x):
+        # print("transforme  input bottleck shape:",x.shape)
+        # out = F.relu(self.bn1(self.conv1(x)))
+        # out = F.relu(self.bn2(self.conv2(out)))
+        # out = self.bn3(self.conv3(out))
+        # out += self.shortcut(x)
+        # out = F.relu(out)
+        out = x + self.cv2(self.cv1(x)) if self.shortcut else self.cv2(self.cv1(x))
+        return out
+class MHSA(nn.Module):
+    def __init__(self, n_dims, width=14, height=14, heads=4, pos_emb=False):
+        super(MHSA, self).__init__()
+
+        self.heads = heads
+        self.query = nn.Conv2d(n_dims, n_dims, kernel_size=1)
+        self.key = nn.Conv2d(n_dims, n_dims, kernel_size=1)
+        self.value = nn.Conv2d(n_dims, n_dims, kernel_size=1)
+        self.pos = pos_emb
+        if self.pos:
+            self.rel_h = nn.Parameter(torch.randn([1, heads, (n_dims) // heads, 1, int(height)]), requires_grad=True)
+            self.rel_w = nn.Parameter(torch.randn([1, heads, (n_dims) // heads, int(width), 1]), requires_grad=True)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        n_batch, C, width, height = x.size()
+        q = self.query(x).view(n_batch, self.heads, C // self.heads, -1)
+        k = self.key(x).view(n_batch, self.heads, C // self.heads, -1)
+        v = self.value(x).view(n_batch, self.heads, C // self.heads, -1)
+        # print('q shape:{},k shape:{},v shape:{}'.format(q.shape,k.shape,v.shape))  #1,4,64,256
+        content_content = torch.matmul(q.permute(0, 1, 3, 2), k)  # 1,C,h*w,h*w
+        # print("qkT=",content_content.shape)
+        c1, c2, c3, c4 = content_content.size()
+        if self.pos:
+            # print("old content_content shape",content_content.shape) #1,4,256,256
+            content_position = (self.rel_h + self.rel_w).view(1, self.heads, C // self.heads, -1).permute(0, 1, 3,
+                                                                                                          2)  # 1,4,1024,64
+
+            content_position = torch.matmul(content_position, q)  # ([1, 4, 1024, 256])
+            content_position = content_position if (
+                        content_content.shape == content_position.shape) else content_position[:, :, :c3, ]
+            assert (content_content.shape == content_position.shape)
+            # print('new pos222-> shape:',content_position.shape)
+            # print('new content222-> shape:',content_content.shape)
+            energy = content_content + content_position
+        else:
+            energy = content_content
+        attention = self.softmax(energy)
+        out = torch.matmul(v, attention.permute(0, 1, 3, 2))  # 1,4,256,64
+        out = out.view(n_batch, C, width, height)
+        return out
+#C3str******************************
+class SwinTransformerBlock(nn.Module):
+    def __init__(self, c1, c2, num_heads, num_layers, window_size=8):
+        super().__init__()
+        self.conv = None
+        if c1 != c2:
+            self.conv = Conv(c1, c2)
+
+        # remove input_resolution
+        self.blocks = nn.Sequential(*[SwinTransformerLayer(dim=c2, num_heads=num_heads, window_size=window_size,
+                                 shift_size=0 if (i % 2 == 0) else window_size // 2) for i in range(num_layers)])
+
+    def forward(self, x):
+        if self.conv is not None:
+            x = self.conv(x)
+        x = self.blocks(x)
+        return x
+class WindowAttention(nn.Module):
+
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        # define a parameter table of relative position bias
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+
+        # get pair-wise relative position index for each token inside the window
+        coords_h = torch.arange(self.window_size[0])
+        coords_w = torch.arange(self.window_size[1])
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += self.window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        self.register_buffer("relative_position_index", relative_position_index)
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        nn.init.normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, mask=None):
+
+        B_, N, C = x.shape
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+        attn = attn + relative_position_bias.unsqueeze(0)
+
+        if mask is not None:
+            nW = mask.shape[0]
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, N, N)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+
+        # print(attn.dtype, v.dtype)
+        try:
+            x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        except:
+            #print(attn.dtype, v.dtype)
+            x = (attn.half() @ v).transpose(1, 2).reshape(B_, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+class Mlp(nn.Module):
+
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.SiLU, drop=0.):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+class SwinTransformerLayer(nn.Module):
+
+    def __init__(self, dim, num_heads, window_size=8, shift_size=0,
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
+                 act_layer=nn.SiLU, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.mlp_ratio = mlp_ratio
+        # if min(self.input_resolution) <= self.window_size:
+        #     # if window size is larger than input resolution, we don't partition windows
+        #     self.shift_size = 0
+        #     self.window_size = min(self.input_resolution)
+        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+
+        self.norm1 = norm_layer(dim)
+        self.attn = WindowAttention(
+            dim, window_size=(self.window_size, self.window_size), num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+
+    def create_mask(self, H, W):
+        # calculate attention mask for SW-MSA
+        img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+        h_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -self.shift_size),
+                    slice(-self.shift_size, None))
+        w_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -self.shift_size),
+                    slice(-self.shift_size, None))
+        cnt = 0
+        for h in h_slices:
+            for w in w_slices:
+                img_mask[:, h, w, :] = cnt
+                cnt += 1
+
+        mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+        mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+        attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+        attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+
+        return attn_mask
+
+    def forward(self, x):
+        # reshape x[b c h w] to x[b l c]
+        _, _, H_, W_ = x.shape
+
+        Padding = False
+        if min(H_, W_) < self.window_size or H_ % self.window_size!=0 or W_ % self.window_size!=0:
+            Padding = True
+            # print(f'img_size {min(H_, W_)} is less than (or not divided by) window_size {self.window_size}, Padding.')
+            pad_r = (self.window_size - W_ % self.window_size) % self.window_size
+            pad_b = (self.window_size - H_ % self.window_size) % self.window_size
+            x = F.pad(x, (0, pad_r, 0, pad_b))
+
+        # print('2', x.shape)
+        B, C, H, W = x.shape
+        L = H * W
+        x = x.permute(0, 2, 3, 1).contiguous().view(B, L, C)  # b, L, c
+
+        # create mask from init to forward
+        if self.shift_size > 0:
+            attn_mask = self.create_mask(H, W).to(x.device)
+        else:
+            attn_mask = None
+
+        shortcut = x
+        x = self.norm1(x)
+        x = x.view(B, H, W, C)
+
+        # cyclic shift
+        if self.shift_size > 0:
+            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+        else:
+            shifted_x = x
+
+        # partition windows
+        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+
+        # W-MSA/SW-MSA
+        attn_windows = self.attn(x_windows, mask=attn_mask)  # nW*B, window_size*window_size, C
+
+        # merge windows
+        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+        shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+
+        # reverse cyclic shift
+        if self.shift_size > 0:
+            x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+        else:
+            x = shifted_x
+        x = x.view(B, H * W, C)
+
+        # FFN
+        x = shortcut + self.drop_path(x)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+
+        x = x.permute(0, 2, 1).contiguous().view(-1, C, H, W)  # b c h w
+
+        if Padding:
+            x = x[:, :, :H_, :W_]  # reverse padding
+
+        return x
+
+class C3STR(C3):
+    # C3 module with SwinTransformerBlock()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        num_heads = c_ // 32
+        self.m = SwinTransformerBlock(c_, c_, num_heads, n)
+
+#DCNv2***************************************************************
+class DCNv2(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=1, dilation=1, groups=1, deformable_groups=1):
+        super(DCNv2, self).__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = (kernel_size, kernel_size)
+        self.stride = (stride, stride)
+        self.padding = (padding, padding)
+        self.dilation = (dilation, dilation)
+        self.groups = groups
+        self.deformable_groups = deformable_groups
+
+        self.weight = nn.Parameter(
+            torch.empty(out_channels, in_channels, *self.kernel_size)
+        )
+        self.bias = nn.Parameter(torch.empty(out_channels))
+
+        out_channels_offset_mask = (self.deformable_groups * 3 *
+                                    self.kernel_size[0] * self.kernel_size[1])
+        self.conv_offset_mask = nn.Conv2d(
+            self.in_channels,
+            out_channels_offset_mask,
+            kernel_size=self.kernel_size,
+            stride=self.stride,
+            padding=self.padding,
+            bias=True,
+        )
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = Conv.default_act
+        self.reset_parameters()
+
+    def forward(self, x):
+        offset_mask = self.conv_offset_mask(x)
+        o1, o2, mask = torch.chunk(offset_mask, 3, dim=1)
+        offset = torch.cat((o1, o2), dim=1)
+        mask = torch.sigmoid(mask)
+        x = torch.ops.torchvision.deform_conv2d(
+            x,
+            self.weight,
+            offset,
+            mask,
+            self.bias,
+            self.stride[0], self.stride[1],
+            self.padding[0], self.padding[1],
+            self.dilation[0], self.dilation[1],
+            self.groups,
+            self.deformable_groups,
+            True
+        )
+        x = self.bn(x)
+        x = self.act(x)
+        return x
+
+    def reset_parameters(self):
+        n = self.in_channels
+        for k in self.kernel_size:
+            n *= k
+        std = 1. / math.sqrt(n)
+        self.weight.data.uniform_(-std, std)
+        self.bias.data.zero_()
+        self.conv_offset_mask.weight.data.zero_()
+        self.conv_offset_mask.bias.data.zero_()
+
+class Bottleneck_DCN(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = DCNv2(c_, c2, 3, 1, groups=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+class C3_DCNv2(C3):
+    # C3 module with DCNv2可变形卷积
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_DCN(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+
