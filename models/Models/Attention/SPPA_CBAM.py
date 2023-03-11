@@ -31,6 +31,33 @@ class SPA(nn.Module):
         y = self.fc(y).reshape((b, c, 1, 1))
         # y = self.fc(y).reshape((b, c, 1, 1)) *self.w1 #添加自适应学习权值，对通道信息增加自适应特征学习
         return x * y
+class SPAF(nn.Module):
+    #多尺度通道注意力
+    def __init__(self, channel, reduction=16):
+        super().__init__()
+        self.avg_pool1 =    nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 =    nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 =    nn.AdaptiveAvgPool2d(4)
+
+        self.fc = nn.Sequential(
+            nn.Linear(channel * 21, channel // reduction, bias=False),
+            nn.ReLU(),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
+        # 设置可学习权值
+        self.w1 = nn.Parameter(torch.FloatTensor(1), requires_grad=True)
+        self.w1.data.fill_(0.5)
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        y1 = self.avg_pool1(x).reshape((b, -1))
+        y2 = self.avg_pool2(x).reshape((b, -1))
+        y3 = self.avg_pool4(x).reshape((b, -1))
+        y = torch.cat((y1, y2, y3), 1)
+        y = self.fc(y).reshape((b, c, 1, 1))
+        # y = self.fc(y).reshape((b, c, 1, 1)) *self.w1 #添加自适应学习权值，对通道信息增加自适应特征学习
+        return x * y
+
 class SpatialAttention(nn.Module):
     # CBAM的空间注意力
     def __init__(self, kernel_size=7):
@@ -63,3 +90,35 @@ class SPPA_CBAM(nn.Module):
         # c*h*w * 1*h*w
         out = self.spatial_attention(out) * out
         return out
+class SPPFA(nn.Module):
+    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
+    def __init__(self, c1, c2, k=5,reduction=16):  # equivalent to SPP(k=(5, 9, 13))
+        super().__init__()
+        c_ = c1 // 2  # hidden channels
+        self.cv1 = nn.Conv2d(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c_ * 4, c2, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.fc = nn.Sequential(
+            nn.Linear(c2 , c2 // reduction, bias=False),
+            nn.ReLU(),
+            nn.Linear(c2 // reduction, c2, bias=False),
+            nn.Sigmoid()
+        )
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        x1 = self.cv1(x)
+        y1 = self.m(x1)
+        y2 = self.m(y1)
+        out = self.cv2(torch.cat((x1, y1, y2, self.m(y2)), 1))
+        out = self.avg_pool1(out).reshape((b, -1))
+        b = self.fc(out).view(b, c, 1, 1)
+        return x*b
+
+if __name__ == '__main__':
+    x = torch.randn(1, 64, 20, 20)
+    b, c, h, w = x.shape
+    net = SPPFA(c1=64,c2=64)
+    y = net(x)
+    print(net)
+    print(y.size())

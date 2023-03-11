@@ -11,6 +11,7 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  SwinTransformer2Block, \
                 SCConv,Bottleneck_DCN
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
+from models.Models.Attention.SPPAF import C3SPPAF
 from models.Models.Litemodel import ADD
 from models.Models.research import Concat_bifpn
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
