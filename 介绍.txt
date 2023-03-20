@@ -1,3 +1,5 @@
 #utils.activations
 
 激活函数： GELU、FRELU
+
+针对小目标：NWD方法，在utils.loss 17行
