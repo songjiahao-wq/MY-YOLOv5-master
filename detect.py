@@ -158,7 +158,10 @@ def run(
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
+                # ************左上角增加数显示
+                cv2.putText(im0, f"{n} {names[int(c)]}{'s' * (n > 1)}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                            (0, 0, 255), 2)
+                # ********************************
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
                     if save_txt:  # Write to file
