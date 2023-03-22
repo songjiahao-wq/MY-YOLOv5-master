@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _pair
-
+import torchvision
 ##### basic ####
 
 def autopad(k, p=None,d=1):  # kernel, padding
@@ -1910,7 +1910,7 @@ class DCNv2(nn.Module):
         o1, o2, mask = torch.chunk(offset_mask, 3, dim=1)
         offset = torch.cat((o1, o2), dim=1)
         mask = torch.sigmoid(mask)
-        x = torch.ops.torchvision.deform_conv2d(
+        x = torchvision.ops.deform_conv2d(
             x,
             self.weight,
             offset,
@@ -1936,6 +1936,67 @@ class DCNv2(nn.Module):
         self.bias.data.zero_()
         self.conv_offset_mask.weight.data.zero_()
         self.conv_offset_mask.bias.data.zero_()
+
+
+# --------------------------DCNv2 start--------------------------
+class DCNv22(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1):
+        super(DCNv22, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride if type(stride) == tuple else (stride, stride)
+        self.padding = padding
+
+        # init weight and bias
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels, kernel_size, kernel_size))
+        self.bias = nn.Parameter(torch.Tensor(out_channels))
+
+        # offset conv
+        self.conv_offset_mask = nn.Conv2d(in_channels,
+                                          3 * kernel_size * kernel_size,
+                                          kernel_size=kernel_size,
+                                          stride=stride,
+                                          padding=self.padding,
+                                          bias=True)
+
+        # init
+        self.reset_parameters()
+        self._init_weight()
+
+    def reset_parameters(self):
+        n = self.in_channels * (self.kernel_size ** 2)
+        stdv = 1. / math.sqrt(n)
+        self.weight.data.uniform_(-stdv, stdv)
+        self.bias.data.zero_()
+
+    def _init_weight(self):
+        # init offset_mask conv
+        nn.init.constant_(self.conv_offset_mask.weight, 0.)
+        nn.init.constant_(self.conv_offset_mask.bias, 0.)
+
+    def forward(self, x):
+        out = self.conv_offset_mask(x)
+        o1, o2, mask = torch.chunk(out, 3, dim=1)
+        offset = torch.cat((o1, o2), dim=1)
+        mask = torch.sigmoid(mask)
+
+        x = torchvision.ops.deform_conv2d(input=x,
+                                          offset=offset,
+                                          weight=self.weight,
+                                          bias=self.bias,
+                                          padding=self.padding,
+                                          mask=mask,
+                                          stride=self.stride)
+        return x
+
+
+# ---------------------------DCNv2 end---------------------------
 
 class Bottleneck_DCN(nn.Module):
     # Standard bottleneck
@@ -2187,6 +2248,6 @@ class Bottleneck_SAC(nn.Module):
 
 if __name__ =="__main__":
     input = torch.randn(1,64,40,40)
-    model = SCConv(64,128,3,2)
+    model = DCNv22(64,128,3,2)
     output = model(input)
     print(output)
