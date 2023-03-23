@@ -2917,36 +2917,46 @@ class BasicBlock_3x3_Reverse(nn.Module):
             return x + y
         else:
             return y
-
-class SPP(nn.Module):
-    def __init__(
-        self,
-        ch_in,
-        ch_out,
-        k,
-        pool_size,
-        act='swish',
-    ):
+class SPP(nn.Module):#多尺度融合SPP即为空间金字塔池化模块
+    # Spatial pyramid pooling layer used in YOLOv3-SPP
+    def __init__(self, c1, c2, k=(5, 9, 13)):
         super(SPP, self).__init__()
-        self.pool = []
-        for i, size in enumerate(pool_size):
-            pool = nn.MaxPool2d(kernel_size=size,
-                                stride=1,
-                                padding=size // 2,
-                                ceil_mode=False)
-            self.add_module('pool{}'.format(i), pool)
-            self.pool.append(pool)
-        self.conv = ConvBNAct(ch_in, ch_out, k, act=act)
-
+        c_ = c1 // 2  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_ * (len(k) + 1), c2, 1, 1)
+        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
     def forward(self, x):
-        outs = [x]
-
-        for pool in self.pool:
-            outs.append(pool(x))
-        y = torch.cat(outs, axis=1)
-
-        y = self.conv(y)
-        return y
+        x = self.cv1(x)
+        return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
+# class SPP(nn.Module):
+#     def __init__(
+#         self,
+#         ch_in,
+#         ch_out,
+#         k,
+#         pool_size,
+#         act='swish',
+#     ):
+#         super(SPP, self).__init__()
+#         self.pool = []
+#         for i, size in enumerate(pool_size):
+#             pool = nn.MaxPool2d(kernel_size=size,
+#                                 stride=1,
+#                                 padding=size // 2,
+#                                 ceil_mode=False)
+#             self.add_module('pool{}'.format(i), pool)
+#             self.pool.append(pool)
+#         self.conv = ConvBNAct(ch_in, ch_out, k, act=act)
+#
+#     def forward(self, x):
+#         outs = [x]
+#
+#         for pool in self.pool:
+#             outs.append(pool(x))
+#         y = torch.cat(outs, axis=1)
+#
+#         y = self.conv(y)
+#         return y
 
 class CSPStage(nn.Module):
     def __init__(self,
