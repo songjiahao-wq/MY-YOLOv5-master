@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import init
-from model.attention.SelfAttention import ScaledDotProductAttention
-from model.attention.SimplifiedSelfAttention import SimplifiedScaledDotProductAttention
+from models.Models.fighting_model.attention.SelfAttention import ScaledDotProductAttention
+from models.Models.fighting_model.attention.SimplifiedSelfAttention import SimplifiedScaledDotProductAttention
 
 class PositionAttentionModule(nn.Module):
 
