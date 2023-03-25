@@ -2,7 +2,7 @@
 """
 Common modules
 """
-
+from torch.nn.parameter import Parameter
 import ast
 import contextlib
 import json
@@ -38,6 +38,8 @@ from models.Models.SwinTransformer import SwinTransformerLayer,window_partition,
 from models.Models.yolovii import Bottleneck_DSConv,Bottleneck_SAC
 import torch.nn.functional as F
 from timm.models.layers import DropPath
+from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention,
+                                                    )
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -84,7 +86,12 @@ class TransformerLayer(nn.Module):
         self.q = nn.Linear(c, c, bias=False)
         self.k = nn.Linear(c, c, bias=False)
         self.v = nn.Linear(c, c, bias=False)
-        self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
+        # self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
+        # self.ma = SelfAttention.ScaledDotProductAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
+        # self.ma = MUSEAttention.MUSEAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
+        # self.ma = UFOAttention.UFOAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
+
+        # self.ma = ExternalAttention.ExternalAttention(d_model=c,S=num_heads)
         self.fc1 = nn.Linear(c, c, bias=False)
         self.fc2 = nn.Linear(c, c, bias=False)
 
@@ -893,7 +900,6 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
-
 
 '''新增程序+++++++++++++++++++++++++++++++++++++'''
 class C3CA(C3):

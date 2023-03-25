@@ -94,7 +94,7 @@ class ClearmlLogger:
                 # We disconnect pytorch auto-detection, because we added manual model save points in the code
             )
             # ClearML's hooks will already grab all general parameters
-            # Only the hyperparameters coming from the yaml config file
+            # Only the hyperparameters coming from the yaml cfg file
             # will have to be added manually!
             self.task.connect(hyp, name='Hyperparameters')
             self.task.connect(opt, name='Args')
