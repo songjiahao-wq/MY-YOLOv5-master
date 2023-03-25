@@ -114,11 +114,11 @@ class CometLogger:
             self.log_asset_data(
                 self.opt.hyp,
                 name="hyperparameters.json",
-                metadata={"type": "hyp-config-file"},
+                metadata={"type": "hyp-cfg-file"},
             )
             self.log_asset(
                 f"{self.opt.save_dir}/opt.yaml",
-                metadata={"type": "opt-config-file"},
+                metadata={"type": "opt-cfg-file"},
             )
 
         self.comet_log_confusion_matrix = COMET_LOG_CONFUSION_MATRIX
@@ -237,7 +237,7 @@ class CometLogger:
 
             return data_dict
 
-        self.log_asset(self.opt.data, metadata={"type": "data-config-file"})
+        self.log_asset(self.opt.data, metadata={"type": "data-cfg-file"})
 
         return check_dataset(data_file)
 

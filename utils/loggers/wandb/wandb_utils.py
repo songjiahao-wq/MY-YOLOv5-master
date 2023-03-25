@@ -150,13 +150,13 @@ class WandbLogger():
         self.wandb_artifact_data_dict = None
         self.data_dict = None
         # It's more elegant to stick to 1 wandb.init call,
-        #  but useful config data is overwritten in the WandbLogger's wandb.init call
+        #  but useful cfg data is overwritten in the WandbLogger's wandb.init call
         if isinstance(opt.resume, str):  # checks resume from artifact
             if opt.resume.startswith(WANDB_ARTIFACT_PREFIX):
                 entity, project, run_id, model_artifact_name = get_run_info(opt.resume)
                 model_artifact_name = WANDB_ARTIFACT_PREFIX + model_artifact_name
                 assert wandb, 'install wandb to resume wandb runs'
-                # Resume wandb-artifact:// runs here| workaround for not overwriting wandb.config
+                # Resume wandb-artifact:// runs here| workaround for not overwriting wandb.cfg
                 self.wandb_run = wandb.init(id=run_id,
                                             project=project,
                                             entity=entity,
@@ -192,7 +192,7 @@ class WandbLogger():
                     self.data_dict = check_wandb_dataset(opt.data)
                     self.wandb_artifact_data_dict = self.wandb_artifact_data_dict or self.data_dict
 
-                    # write data_dict to config. useful for resuming from artifacts. Do this only when not resuming.
+                    # write data_dict to cfg. useful for resuming from artifacts. Do this only when not resuming.
                     self.wandb_run.config.update({'data_dict': self.wandb_artifact_data_dict}, allow_val_change=True)
                 self.setup_training(opt)
 
