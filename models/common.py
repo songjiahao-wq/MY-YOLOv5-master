@@ -38,7 +38,6 @@ from models.Models.SwinTransformer import SwinTransformerLayer,window_partition,
 from models.Models.yolovii import Bottleneck_DSConv,Bottleneck_SAC
 import torch.nn.functional as F
 from timm.models.layers import DropPath
-from models.Models.yolovii import MixConv2d
 from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention,
                                                     )
 
