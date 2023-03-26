@@ -78,14 +78,7 @@ class Shortcut(nn.Module):
     def forward(self, x):
         return x[0]+x[1]
 
-'''
-██╗   ██╗ ██████╗ ██╗      ██████╗      █████╗     ██╗    ██████╗ 
-╚██╗ ██╔╝██╔═══██╗██║     ██╔═══██╗    ██╔══██╗    ██║    ██╔══██╗
- ╚████╔╝ ██║   ██║██║     ██║   ██║    ███████║    ██║    ██████╔╝
-  ╚██╔╝  ██║   ██║██║     ██║   ██║    ██╔══██║    ██║    ██╔══██╗
-   ██║   ╚██████╔╝███████╗╚██████╔╝    ██║  ██║    ██║    ██║  ██║
-   ╚═╝    ╚═════╝ ╚══════╝ ╚═════╝     ╚═╝  ╚═╝    ╚═╝    ╚═╝  ╚═╝
-'''
+
 
 class Foldcut(nn.Module):
     def __init__(self, dimension=0):
@@ -111,7 +104,37 @@ class Conv(nn.Module):
 
     def fuseforward(self, x):
         return self.act(self.conv(x))
-    
+class SCConv(nn.Module):
+    def __init__(self, inplanes, planes, stride, padding, dilation, groups, pooling_r, norm_layer):
+        super(SCConv, self).__init__()
+        self.k2 = nn.Sequential(
+                    nn.AvgPool2d(kernel_size=pooling_r, stride=pooling_r),
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                                padding=padding, dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+        self.k3 = nn.Sequential(
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                                padding=padding, dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+        self.k4 = nn.Sequential(
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride,
+                                padding=padding, dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+
+    def forward(self, x):
+        identity = x
+
+        out = torch.sigmoid(torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:]))) # sigmoid(identity + k2)
+        out = torch.mul(self.k3(x), out) # k3 * sigmoid(identity + k2)
+        out = self.k4(out) # k4
+
+        return out
 
 class RobustConv(nn.Module):
     # Robust convolution (use high kernel size 7-11 for: downsampling and other layers). Train for 300 - 450 epochs.
@@ -2244,10 +2267,58 @@ class Bottleneck_SAC(nn.Module):
 
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+class MixConv2d(nn.Module):
+    # Mixed Depthwise Conv https://arxiv.org/abs/1907.09595
+    def __init__(self, c1, c2, k=(1, 3), s=1, equal_ch=True):
+        """
+        :params c1: 输入feature map的通道数
+        :params c2: 输出的feature map的通道数（这个函数的关键点就是对c2进行分组）
+        :params k: 混合的卷积核大小 其实一般是[3, 5, 7...]用的比较多的
+        :params s: 步长 stride
+        :params equal_ch: 通道划分方式 有均等划分和指数划分两种方式  默认是均等划分
+        """
+        super(MixConv2d, self).__init__()
+        groups = len(k)
+        if equal_ch:  # 均等划分通道
+            i = torch.linspace(0, groups - 1E-6, c2).floor()  # c2 indices
+            c_ = [(i == g).sum() for g in range(groups)]  # intermediate channels
+        else:  # 指数划分通道
+            b = [c2] + [0] * groups
+            a = np.eye(groups + 1, groups, k=-1)
+            a -= np.roll(a, 1, axis=1)
+            a *= np.array(k) ** 2
+            a[0] = 1
+            c_ = np.linalg.lstsq(a, b, rcond=None)[0].round()  # solve for equal weight indices, ax = b
 
+        self.m = nn.ModuleList([nn.Conv2d(c1, int(c_[g]), k[g], s, k[g] // 2, bias=False) for g in range(groups)])
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.LeakyReLU(0.1, inplace=True)
+
+    def forward(self, x):
+        # 这里核原论文略有出入，这里加了一个shortcut操作
+        return  self.act(self.bn(torch.cat([m(x) for m in self.m], 1)))
+
+class MDConv(nn.Module):
+    def __init__(self, nchannels, kernel_sizes, stride):
+        super(MDConv,self).__init__()
+        self.nchannels = nchannels
+        self.groups = len(kernel_sizes)
+
+        self.split_channels = [nchannels // self.groups for _ in range(self.groups)]
+        self.split_channels[0] += nchannels - sum(self.split_channels)
+
+        self.layers = []
+        for i in range(self.groups):
+            self.layers.append(nn.Conv2d(in_channels=self.split_channels[i],out_channels=self.split_channels[i],
+                                         kernel_size=kernel_sizes[i], stride=stride,padding=int(kernel_sizes[i]//2), groups=self.split_channels[i]))
+
+    def forward(self, x):
+        split_x = torch.split(x, self.split_channels, dim=1)
+        outputs = [layer(sp_x) for layer,sp_x in zip(self.layers, split_x)]
+        return torch.cat(outputs, dim=1)
 
 if __name__ =="__main__":
     input = torch.randn(1,64,40,40)
-    model = DCNv22(64,128,3,2)
+    model = MixConv2d(64,84,[3,5,7])
     output = model(input)
-    print(output)
+    print(output.shape)
