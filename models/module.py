@@ -9,14 +9,13 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC, \
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
-                SCConv,Bottleneck_DCN
+                SCConv,Bottleneck_DCN,SCConv
 
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 from models.Models.Attention.SPPAF import C3SPPAF
 from models.Models.Litemodel import ADD
 from models.Models.research import Concat_bifpn
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
-
 
 
 from models.Models.fighting_model.attention.SEAttention import SEAttention #se = SEAttention(channel=512,reduction=8)
