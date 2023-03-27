@@ -90,35 +90,11 @@ class SPPA_CBAM(nn.Module):
         # c*h*w * 1*h*w
         out = self.spatial_attention(out) * out
         return out
-class SPPFA(nn.Module):
-    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
-    def __init__(self, c1, c2, k=5,reduction=16):  # equivalent to SPP(k=(5, 9, 13))
-        super().__init__()
-        c_ = c1 // 2  # hidden channels
-        self.cv1 = nn.Conv2d(c1, c_, 1, 1)
-        self.cv2 = nn.Conv2d(c_ * 4, c2, 1, 1)
-        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
-        self.fc = nn.Sequential(
-            nn.Linear(c2 , c2 // reduction, bias=False),
-            nn.ReLU(),
-            nn.Linear(c2 // reduction, c2, bias=False),
-            nn.Sigmoid()
-        )
-        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
-    def forward(self, x):
-        b, c, _, _ = x.shape
-        x1 = self.cv1(x)
-        y1 = self.m(x1)
-        y2 = self.m(y1)
-        out = self.cv2(torch.cat((x1, y1, y2, self.m(y2)), 1))
-        out = self.avg_pool1(out).reshape((b, -1))
-        b = self.fc(out).view(b, c, 1, 1)
-        return x*b
 
 if __name__ == '__main__':
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = SPPFA(c1=64,c2=64)
+    net = SPPA_CBAM(c1=64,c2=64)
     y = net(x)
-    print(net)
+    # print(net)
     print(y.size())
