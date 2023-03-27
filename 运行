@@ -1,0 +1,3 @@
+python train.py --epoch 150 --batch-size 16 --img 640 --cache ram
+
+python val.py --weights runs/train/yolov5s/weights/best.pt --data VOC_five.yaml --exist-ok
