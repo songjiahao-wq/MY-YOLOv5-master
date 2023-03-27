@@ -319,7 +319,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
+                BottleneckCSP, C3, C3f, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
             SCConv,nn.ConvTranspose2d,conv_bn_hswish,MobileNetV3_InvertedResidual,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU,
@@ -394,7 +394,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-MDconv.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/experimental/yolov5s-MDconv2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

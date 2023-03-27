@@ -2318,7 +2318,9 @@ class MDConv(nn.Module):
         return torch.cat(outputs, dim=1)
 
 if __name__ =="__main__":
-    input = torch.randn(1,64,40,40)
-    model = MixConv2d(64,84,[3,5,7])
-    output = model(input)
-    print(output.shape)
+    input = torch.randn(64,40,40)
+    input = torch.unsqueeze(input,dim=0)
+    print(input.shape)
+    # model = MixConv2d(64,84,[3,5,7])
+    # output = model(input)
+    # print(output.shape)
