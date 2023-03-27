@@ -6,7 +6,6 @@ from torch.nn.parameter import Parameter
 import ast
 import contextlib
 import json
-import math
 import platform
 import warnings
 import zipfile
@@ -25,6 +24,7 @@ from IPython.display import display
 from PIL import Image
 from torch.cuda import amp
 
+from models.experimental import *
 from models.module import *
 from utils import TryExcept
 from utils.dataloaders import exif_transpose, letterbox
@@ -203,6 +203,50 @@ class C3(nn.Module):
 
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+
+class C3f(nn.Module):
+    # c3f with v5 bottleneck
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv((2 + n) * c_, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n))
+
+    def forward(self, x):
+        y = list(torch.unsqueeze(self.cv1(x),dim=0))
+        y.extend(m(y[-1]) for m in self.m)
+        y.extend(torch.unsqueeze(self.cv2(x),dim=0))
+
+        return self.cv3(torch.cat(y, 1))
+
+class v8_Bottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):  # ch_in, ch_out, shortcut, groups, kernels, expand
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, k[0], 1)
+        self.cv2 = Conv(c_, c2, k[1], 1, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+
+class C2f(nn.Module):
+    # CSP Bottleneck with 2 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(v8_Bottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+
+    def forward(self, x):
+        y = list(self.cv1(x).split((self.c, self.c), 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
 
 
 class C3x(C3):
