@@ -12,7 +12,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str,
-                        default='yolov5s.yaml',
+                        default='yolov5s-Mixconv.yaml',
                         help='model.yaml path')
     parser.add_argument('--hyp', type=str, default='../data/hyps/hyp.scratch-low.yaml',
                         help='hyperparameters path')
