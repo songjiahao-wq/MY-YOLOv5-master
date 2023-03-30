@@ -67,7 +67,7 @@ def train(opt, device):
     # Save run settings
     yaml_save(save_dir / 'opt.yaml', vars(opt))
 
-    # Logger
+    # Logger Tensorboard
     logger = GenericLogger(opt=opt, console_logger=LOGGER) if RANK in {-1, 0} else None
 
     # Download Dataset
