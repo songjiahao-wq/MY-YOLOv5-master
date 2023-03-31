@@ -231,8 +231,8 @@ class SPPFC(nn.Module):
         else:
             self.m = nn.ModuleList(conv(c_, c_, k[i], padding=k[i] // 2,groups=conv_groups[i]) for i in range(len(k)))
         self.fc = nn.Sequential(
-            # nn.Linear(c2 , c2 // reduction, bias=False),
-            # nn.ReLU(),
+            nn.Linear(c2 // reduction , c2 // reduction, bias=False),
+            nn.ReLU(),
             nn.Linear(c2 // reduction, c2, bias=False),
             nn.Sigmoid()
         )

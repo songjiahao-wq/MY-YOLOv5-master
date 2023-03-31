@@ -89,8 +89,10 @@ class MultiScaleAttention(nn.Module):
 
         weight = self.spatial_attention(x) * self.channel_attention(x)
         # weight =  self.channel_attention(x)
-        out = weight + x
-        return out
+        out_feature = weight * x
+        # out_feature = weight + x
+        # out_feature = out_feature + x #加残差
+        return out_feature
 
     """
     #在这个特定的例子中，空间注意力机制 (self.spatial_attention(x)) 和通道注意力机制 (self.channel_attention(x))
@@ -103,3 +105,45 @@ if __name__ == "__main__":
     input = torch.randn(1, 128, 20, 20)
     models = MultiScaleAttention(128, 128, 1)
     print(models(input).shape)
+"""
+1. 空间多尺度注意力机制 (Spatial Multi-Scale Attention):
+
+空间注意力机制关注的是输入特征图中每个位置的重要性。在这个例子中，我们实现了一个空间多尺度注意力机制，它可以捕获不同尺度下的上下文信息。这种注意力机制通过在不同空间范围内进行局部邻域操作来实现多尺度特性。在这个实现中，我们使用了具有不同 dilation 参数的卷积层。这样可以在不增加计算复杂度的情况下，扩大感受野。
+
+对于每个尺度，我们计算一个注意力图。这些注意力图随后相加，从而形成一个综合的空间注意力图。通过逐元素乘法，将空间注意力图应用于输入特征图，从而突出显示在不同尺度下具有较高权重的区域。
+
+2. 通道注意力机制 (Channel Attention):
+
+通道注意力机制关注的是输入特征图中每个通道的重要性。在上述实现中，我们提出了一种修改后的通道注意力机制，它基于全局平均池化和全局最大池化，以及一个全连接层。与 Squeeze-and-Excitation (SE) 块相比，它减少了参数数量，从而实现了轻量化。
+
+这个通道注意力机制首先计算输入特征图的全局平均池化和全局最大池化，然后将它们分别输入一个全连接层。这个全连接层将通道数量降低为原始通道数量除以一个固定的缩减比例（例如 16）。将平均池化和最大池化得到的两个注意力向量相加，从而形成一个综合的通道注意力向量。将通道注意力向量应用于输入特征图的通道维度，突出显示具有较高权重的通道。
+
+3. 注意力机制的结合：
+
+在上述实现的神经网络模型中，我们将空间多尺度注意力机制和修改后的通道注意力机制结合在一起。这是通过将两个注意力机制的输出逐元素相乘来实现的。这样，我们可以同时捕捉空间和通道维度上的上下文信息，从而使模型更好地关注输入数据中的重要特征。这种组合在某些情况下可能比单独使用空间或通道注意力机制产生更好的性能。
+"""
+"""
+以下是上述注意力机制的理论公式：
+空间多尺度注意力机制 (Spatial Multi-Scale Attention):
+对于每个尺度 i (i = 1, 2, ..., num_scales)，我们计算空间注意力图 A_s_i 如下：
+A_s_i = f_s_i(x)
+其中 f_s_i(x) 是具有不同 dilation 参数的卷积运算，用于扩展感受野以捕获第 i 个尺度的上下文信息。
+接下来，将所有尺度的空间注意力图相加，得到综合空间注意力图 A_s：
+A_s = Σ A_s_i
+通道注意力机制 (Channel Attention):
+计算全局平均池化 (GAP) 和全局最大池化 (GMP)：
+GAP_x = GAP(x)
+GMP_x = GMP(x)
+将 GAP_x 和 GMP_x 分别输入一个全连接层 f_c(x)，得到通道注意力向量 A_c_avg 和 A_c_max：
+A_c_avg = f_c(GAP_x)
+A_c_max = f_c(GMP_x)
+将 A_c_avg 和 A_c_max 相加，得到综合通道注意力向量 A_c：
+A_c = A_c_avg + A_c_max
+注意力机制的结合：
+将空间多尺度注意力图 A_s 和通道注意力向量 A_c 结合起来，形成一个综合注意力图 A：
+A = A_s ⊙ A_c
+其中 ⊙ 表示逐元素乘法。这个综合注意力图 A 既包含空间维度上的信息，也包含通道维度上的信息。
+将注意力图 A 应用于输入特征图 x，得到输出特征图 y：
+y = x ⊙ A
+在这个实现中，我们直接输出经过注意力调整的特征图 y。
+"""
