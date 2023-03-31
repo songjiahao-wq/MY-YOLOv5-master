@@ -17,7 +17,7 @@ from models.Models.Litemodel import ADD
 from models.Models.research import Concat_bifpn
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
 
-from models.Models.Attention.my_attention import PSAModule_s
+from models.Models.Attention.my_attention import PSAModule_s, SPPFC
 from add.cv_attention.Acmix import ACmix
 from add.cv_attention.CBAM import CBAMBlock as CBAM
 from models.Models.fighting_model.attention.SEAttention import SEAttention #se = SEAttention(channel=512,reduction=8)

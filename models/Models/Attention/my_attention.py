@@ -219,18 +219,20 @@ def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1, 
                      padding=padding, dilation=dilation, groups=groups, bias=False)
 class SPPFC(nn.Module):
     # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
-    def __init__(self, c1, c2, k=[3,5,7] , reduction=16, group=False,conv_groups=[2, 4, 8, 16]):  # equivalent to SPP(k=(5, 9, 13))
-        super().__init__()
+    def __init__(self, c1, c2, k=[3,3,3] , reduction=16, group=True,conv_groups=[4, 8, 16,32]):  # equivalent to SPP(k=(5, 9, 13))
+        super(SPPFC, self).__init__()
         c_ = c1 // 2  # hidden channels
         self.cv1 = conv(c1, c_, 1, 1)
-        self.cv2 = conv(c_ * (1 + len(k)), c2, 1, 1)
+        # self.cv1 = conv(c1, c2 // reduction, 1, 1)
+        self.cv2 = conv(c_ * (1 + len(k)), c2 // reduction, 1, 1)
+        # self.cv2 = conv((c2 // reduction) * (1 + len(k)), c2 // reduction, 1, 1)
         if not group:
             self.m = nn.ModuleList(conv(c_, c_, k[i],padding=k[i]//2) for i in range(len(k)))
         else:
             self.m = nn.ModuleList(conv(c_, c_, k[i], padding=k[i] // 2,groups=conv_groups[i]) for i in range(len(k)))
         self.fc = nn.Sequential(
-            nn.Linear(c2 , c2 // reduction, bias=False),
-            nn.ReLU(),
+            # nn.Linear(c2 , c2 // reduction, bias=False),
+            # nn.ReLU(),
             nn.Linear(c2 // reduction, c2, bias=False),
             nn.Sigmoid()
         )
@@ -398,9 +400,10 @@ class ACmix(nn.Module):
 
         return self.rate1 * out_att + self.rate2 * out_conv
 
+
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = PSAMix(inplans=64,planes=64)
+    net = SPPFC(64, 64)
     y = net(x)
     print(y.size())
