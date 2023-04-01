@@ -432,7 +432,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default=ROOT / '', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='cfg/attention/yolov5s-SPPAF.yaml', help='model.yaml path')
+    parser.add_argument('--cfg', type=str, default='cfg/attention/yolov5s-SPPFC.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/VOC_five.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=150, help='total training epochs')
