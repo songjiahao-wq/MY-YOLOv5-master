@@ -2316,6 +2316,8 @@ class MDConv(nn.Module):
         split_x = torch.split(x, self.split_channels, dim=1)
         outputs = [layer(sp_x) for layer,sp_x in zip(self.layers, split_x)]
         return torch.cat(outputs, dim=1)
+# Focus + upsample + concat = CFN
+
 
 if __name__ =="__main__":
     input = torch.randn(64,40,40)
