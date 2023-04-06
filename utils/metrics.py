@@ -295,7 +295,16 @@ class WIoU_Scale:
                 alpha = delta * torch.pow(gamma, beta - delta)
                 return beta / alpha
         return 1
+"""
+注意事项
+我认为Focal_EIoU的思想是可以用作与其他IoU的变种，因此我对里面所有的IoU都支持Focal_EIoU的思想，只需要设定Focal参数为True即可，我自己测试的过程中，除了Focal_SIoU出现loss为inf之外，其他的都正常，不过这个不同的数据集可能出现不一样，具体可以自行测试下。
+gamma参数是Focal_EIoU中的gamma参数，一般就是为0.5，有需要可以自行更改。
+alpha参数为AlphaIoU中的alpha参数，默认为1,1的意思就是跟正常的IoU一样，如果想采用AlphaIoU的话，论文alpha默认值为3。(比如我不想使用AlphaIoU的特性，我就把alpha设置为1就可以，如果我想使用AlphaIoU的特性，我可以设置alpha为3)。
+跟Focal_EIoU一样，我认为AlphaIoU的思想同样可以用在其他的IoU变种上，简单来说就是如果你设置了alpha为3，其他IoU设定的参数(GIoU，DIoU，CIoU，EIoU，SIoU)为False的时候，那就是AlphaIoU，如果你设置了alpha为3，CIoU为True的时候，那就是AlphaCIoU，效果的话就因数据集和模型而已，具体可以自行测试下。
+想用那个IoU变种，就直接设置参数为True即可。
+AlphaIoU理论上与Focal_EIoU没有直接的冲突，但是作者这边没有详细测试过，这两者一起用会是什么效果，有兴趣可以自行测试下。
 
+"""
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=False, EIoU=False, WIoU=False, Focal=False,
              alpha=1, gamma=0.5, scale=False, eps=1e-7):
