@@ -122,17 +122,42 @@ class SPPFA(nn.Module):
         y1 = self.m(x1)
         y2 = self.m(y1)
         out = self.cv2(torch.cat((x1, y1, y2, self.m(y2)), 1))
+        z = self.avg_pool1(out)
         out = self.avg_pool1(out).reshape((b, -1))
         b = self.fc(out).view(b, c, 1, 1)
-        return x*b
+        return x * b
+
+class LightweightSPPFA(nn.Module):
+    def __init__(self, c1, c2, k=5, reduction=16):
+        super().__init__()
+        self.cv1 = nn.Conv2d(c1, c2, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(c1 * 4, c1 // reduction, bias=False),
+            nn.ReLU(),
+            nn.Linear(c1 // reduction, c2, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        x1 = self.cv1(x)
+        y1 = self.m(x1)
+        y2 = self.m(y1)
+        out = torch.cat((x1, y1, y2, self.m(y2)), 1)
+        out = self.avg_pool1(out).reshape((b, -1))
+        b = self.fc(out).view(b, c, 1, 1)
+        return x * b
+
 #SPPA_CBAM****************************************
 class SPA(nn.Module):
     #多尺度通道注意力
     def __init__(self, channel, reduction=16):
         super().__init__()
-        self.avg_pool1 =    nn.AdaptiveAvgPool2d(1)
-        self.avg_pool2 =    nn.AdaptiveAvgPool2d(2)
-        self.avg_pool4 =    nn.AdaptiveAvgPool2d(4)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 = nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 = nn.AdaptiveAvgPool2d(4)
 
         self.fc = nn.Sequential(
             nn.Linear(channel * 21, channel // reduction, bias=False),
@@ -152,6 +177,7 @@ class SPA(nn.Module):
         y = self.fc(y).reshape((b, c, 1, 1))
         # y = self.fc(y).reshape((b, c, 1, 1)) *self.w1 #添加自适应学习权值，对通道信息增加自适应特征学习
         return x * y
+
 class SPAF(nn.Module):
     #多尺度通道注意力
     def __init__(self, channel, reduction=16):
@@ -404,6 +430,6 @@ class ACmix(nn.Module):
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = SPPFC(64, 64)
+    net = LightweightSPPFA(64, 64)
     y = net(x)
     print(y.size())
