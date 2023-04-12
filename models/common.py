@@ -1140,6 +1140,7 @@ class C3_CAAM(nn.Module):
         out = self.channel_attention(out) * out
         out = self.spatial_attention(out) * out
         return self.cv3(out)
+
 class CAAMBottleneck(nn.Module):
     # CA注意力+CBAM空间注意力
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
@@ -1148,14 +1149,16 @@ class CAAMBottleneck(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)
         self.add = shortcut and c1 == c2
-        self.channel_attention = CA(c1, c2)
+        self.channel_attention = ShuffleAttention(c1, c2)
 
-        self.spatial_attention = SpatialAttention()
+
+        # self.spatial_attention = SpatialAttention()
     def forward(self, x):
         y = self.cv2(self.cv1(x))
-        out = self.channel_attention(y) * y
-        out = self.spatial_attention(out) * out
+        out = self.channel_attention(y)
+        # out = self.spatial_attention(out) * out
         return x + out if self.add else out
+
 class SpatialAttention(nn.Module):
     # CBAM的空间注意力
     def __init__(self, kernel_size=7):
