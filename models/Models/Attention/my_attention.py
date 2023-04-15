@@ -245,7 +245,7 @@ def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1, 
                      padding=padding, dilation=dilation, groups=groups, bias=False)
 class SPPFC(nn.Module):
     # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
-    def __init__(self, c1, c2, k=[3,3,3] , reduction=16, group=True,conv_groups=[4, 8, 16,32]):  # equivalent to SPP(k=(5, 9, 13))
+    def __init__(self, c1, c2, k=[3,3,3] , reduction=16, group=True,conv_groups=[4, 8, 16 , 32]):  # equivalent to SPP(k=(5, 9, 13))
         super(SPPFC, self).__init__()
         c_ = c1 // 2  # hidden channels
         self.cv1 = conv(c1, c_, 1, 1)
@@ -255,7 +255,7 @@ class SPPFC(nn.Module):
         if not group:
             self.m = nn.ModuleList(conv(c_, c_, k[i],padding=k[i]//2) for i in range(len(k)))
         else:
-            self.m = nn.ModuleList(conv(c_, c_, k[i], padding=k[i] // 2,groups=conv_groups[i]) for i in range(len(k)))
+            self.m = nn.ModuleList(conv(c_, c_, k[i], padding=k[i] // 2, groups=conv_groups[i]) for i in range(len(k)))
         self.fc = nn.Sequential(
             nn.Linear(c2 // reduction , c2 // reduction, bias=False),
             nn.ReLU(),

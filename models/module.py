@@ -9,7 +9,9 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC, \
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
-                SCConv,Bottleneck_DCN
+                SCConv,Bottleneck_DCN, FusionModel
+from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
+from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
 
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 from models.Models.Attention.SPPAF import C3SPPAF
@@ -17,9 +19,13 @@ from models.Models.Litemodel import ADD
 from models.Models.research import Concat_bifpn
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
 
-from models.Models.Attention.my_attention import PSAModule_s, SPPFC
+from models.Models.Attention.SoftThresholdAttention import *
+from models.Models.Attention.my_attention import PSAModule_s, SPPFC,PSAMix
+from models.Models.Attention.MultiScaleAttention import MultiScaleAttention,MultiScaleAttentionCSPA,MultiScaleAttentionCSPB,MultiScaleFrequencyAttention,\
+                    FrequencyAttention, MultiScaleFreqAttention,SoftThresholdAttentionResidual
+
 from add.cv_attention.Acmix import ACmix
-from add.cv_attention.CBAM import CBAMBlock as CBAM
+from add.cv_attention.CBAM import CBAMBlock as CBAM, CBAMBlock2
 from models.Models.fighting_model.attention.SEAttention import SEAttention #se = SEAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.SKAttention import SKAttention #se = SKAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.BAM import BAMBlock #bam = BAMBlock(channel=512,reduction=16,dia_val=2)

@@ -68,6 +68,33 @@ class CBAMBlock(nn.Module):
         out = out * self.sa(out)
         return out + residual
 
+class CBAMBlock2(nn.Module):
+
+    def __init__(self, channel=512, reduction=16, kernel_size=49):
+        super().__init__()
+        self.ca = ChannelAttention(channel=channel, reduction=reduction)
+        self.sa = SpatialAttention(kernel_size=kernel_size)
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        residual = x
+        outca = x * self.ca(x)
+        out =  outca * self.sa(outca)
+        return out + residual + outca
 
 if __name__ == '__main__':
     input = torch.randn(50, 512, 7, 7)

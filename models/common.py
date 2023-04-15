@@ -38,8 +38,8 @@ from models.Models.SwinTransformer import SwinTransformerLayer,window_partition,
 from models.Models.yolovii import Bottleneck_DSConv,Bottleneck_SAC
 import torch.nn.functional as F
 from timm.models.layers import DropPath
-from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention,
-                                                    )
+from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention, )
+from add.cv_attention import CBAM, ShuffleAttention, SimAM
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -133,6 +133,21 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+class Bottleneck_ATT(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+        # self.ATT = MultiScaleAttention(c_, c_, 1)
+        self.ATT = SoftThresholdAttentionResidual(c_)
+
+        # self.ATT = ECA(c2, c2)
+
+    def forward(self, x):
+        return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
 
 class Bottleneck_MDconv(nn.Module):
     # Standard bottleneck
@@ -140,7 +155,7 @@ class Bottleneck_MDconv(nn.Module):
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = MixConv2d(c_, c2, [3,5], 1)
+        self.cv2 = MixConv2d(c_, c2, [3, 5], 1)
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
@@ -201,6 +216,17 @@ class C3(nn.Module):
         self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
         self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 
+    def forward(self, x):
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+class C3_ATT(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.Sequential(*(Bottleneck_ATT(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
 
@@ -313,7 +339,6 @@ class SPP(nn.Module):
             warnings.simplefilter('ignore')  # suppress torch 1.9.0 max_pool2d() warning
             return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
 
-
 class SPPF(nn.Module):
     # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
     def __init__(self, c1, c2, k=5):  # equivalent to SPP(k=(5, 9, 13))
@@ -330,6 +355,25 @@ class SPPF(nn.Module):
             y1 = self.m(x)
             y2 = self.m(y1)
             return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
+class SPPF_ATT(nn.Module):
+    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
+    def __init__(self, c1, c2, k=5):  # equivalent to SPP(k=(5, 9, 13))
+        super().__init__()
+        c_ = c1 // 2  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_ * 4, c2, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.ATT1 =CBAM.CBAMBlock(c_ * 4) #注意力
+        self.ATT2 =ECA(c_ * 4, c2)
+        self.ATT3 =ShuffleAttention.ShuffleAttention(c_ * 4)
+        self.ATT4 =SimAM.SimAM()
+    def forward(self, x):
+        x = self.cv1(x)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')  # suppress torch 1.9.0 max_pool2d() warning
+            y1 = self.m(x)
+            y2 = self.m(y1)
+            return self.cv2(self.ATT4(torch.cat((x, y1, y2, self.m(y2)), 1)))
 
 
 class Focus(nn.Module):
@@ -1149,14 +1193,14 @@ class CAAMBottleneck(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)
         self.add = shortcut and c1 == c2
-        self.channel_attention = ShuffleAttention(c1, c2)
+        self.channel_attention = CA(c1, c2)
 
 
         # self.spatial_attention = SpatialAttention()
     def forward(self, x):
         y = self.cv2(self.cv1(x))
         out = self.channel_attention(y)
-        # out = self.spatial_attention(out) * out
+        out = self.spatial_attention(out) * out
         return x + out if self.add else out
 
 class SpatialAttention(nn.Module):
@@ -1390,9 +1434,9 @@ class SqueezeExcite_efficientv2(nn.Module):
 
 
 class FusedMBConv(nn.Module):
-    def __init__(self, c1, c2, k=3, s=1, expansion=1, drop_connect_rate=0.2):
+    def __init__(self, c1, c2, k=3, s=1, expansion=1, drop_connect_rate=0.2,has_se=0):
         super().__init__()
-
+        self.has_se =has_se
         assert s in [1, 2]
 
         self.has_shortcut = (s == 1 and c1 == c2)
@@ -1408,7 +1452,11 @@ class FusedMBConv(nn.Module):
         self.drop_connect_rate = drop_connect_rate
         if self.has_shortcut and drop_connect_rate > 0:
             self.dropout = DropPath(drop_connect_rate)
-
+        # Squeeze and Excitation layer, if desired
+        if self.has_se:
+            # num_squeezed_channels = max(1, int(c1 * se_ratio))
+            # self.se = SeBlock(c1, 4)
+            self.se = CA(c1,c1, 4)
     def forward(self, x):
         if self.has_expansion:
             result = self.expansion_conv(x)
@@ -1419,7 +1467,9 @@ class FusedMBConv(nn.Module):
         if self.has_shortcut:
             if self.drop_connect_rate > 0:
                 result = self.dropout(result)
-
+        # Squeeze and Excitation
+        if self.has_se:
+            x = self.se(x)
             result += x
 
         return result
@@ -1683,7 +1733,8 @@ class GHOSTBottleneck(nn.Module):
         out = self.bn2(out)
         out = self.relu(out)
 
-
+        # if self.se is not None:
+        #     x = self.se(x)
 
         out = self.conv3(out)
         out = self.bn3(out)
@@ -1778,6 +1829,8 @@ class Stage(nn.Module):
             m_list.append(e)
         m = torch.cat(m_list, 1)
         m = self.merge(m)
+
+
 
         c = x0[:, self.raw_planes:]
         c = self.cheap_relu(self.cheap(c) + m)
@@ -3241,4 +3294,36 @@ class PConv(nn.Module):
         x = torch.cat((x1, x2), 1)
         x = self.conv(x)
         return x
+#s
+class FEM(nn.Module):
+    def __init__(self, in_channels, out_chanels, d=[1, 1, 1], kernel_sizes=[1, 3, 5]):
+        super(FEM, self).__init__()
+        c_ = in_channels //2
+        self.cv1 = Conv(in_channels, c_)
+        self.branches = nn.ModuleList()
+        for i in range(len(kernel_sizes)):
+            padding = kernel_sizes[i] // 2
+            branch = nn.Sequential(
+                nn.Conv2d(c_, c_, kernel_size=kernel_sizes[i], stride=1, padding=autopad(kernel_sizes[i],None,d[i]) , dilation=d[i]  , groups=16),
+                nn.BatchNorm2d(c_),
+                nn.ReLU(inplace=True)
+            )
+            self.branches.append(branch)
+        self.cv2 = Conv(c_ * 3 , out_chanels, k=1)
+    def forward(self, x):
+        # x: input tensor of shape (batch_size, in_channels, height, width)
+        residual = x
+        x = self.cv1(x)
+        # Apply different kernel sizes
+        outputs = []
+        for branch in self.branches:
+            out = branch(x)
+            outputs.append(out)
+        # outputs.append(residual)
+        # Concatenate the outputs along the channel dimension
+        out = torch.cat(outputs, dim=1)
+        out = self.cv2(out)
+        return out
+
+
 
