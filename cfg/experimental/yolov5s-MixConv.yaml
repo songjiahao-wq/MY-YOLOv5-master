@@ -1,5 +1,8 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 
+#param	GFLOPs	 P	    R	     Map0.5	Map:0.95
+#9.64	22.4	0.78	0.771	0.821 	0.593
+
 # Parameters
 nc: 80  # number of classes
 depth_multiple: 0.33  # model depth multiple

@@ -323,7 +323,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU,
-        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, SCConv, C3_MDConv, C2f}:#添加模块
+        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM,CBAMBlock2}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -343,6 +343,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
+
             args = [c1, c2, *args[1:]]
 
         elif m is GGhostRegNet:
@@ -353,6 +354,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             GHOSTBottleneck_layers.append(n)
             args = [block, GHOSTBottleneck_layers, widths, args[1]]
             n = 1
+        elif m is convnextv2_att:
+            c2 = args[0]
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
@@ -375,6 +378,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = max([ch[x] for x in f])
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
+        elif m is InceptionNext_small:
+            c2 = args[0]
         else:
             c2 = ch[f]
 

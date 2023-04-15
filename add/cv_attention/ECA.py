@@ -29,11 +29,13 @@ class ECAAttention(nn.Module):
 
     def forward(self, x):
         y = self.gap(x)  # bs,c,1,1
+        #squeeze() 函数用于删除张量中尺寸为 1 的维度
         y = y.squeeze(-1).permute(0, 2, 1)  # bs,1,c
         y = self.conv(y)  # bs,1,c
         y = self.sigmoid(y)  # bs,1,c
         y = y.permute(0, 2, 1).unsqueeze(-1)  # bs,c,1,1
-        return x * y.expand_as(x)
+        y = y.expand_as(x)
+        return x * y
 
 
 if __name__ == '__main__':

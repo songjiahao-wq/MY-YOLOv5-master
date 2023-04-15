@@ -1,3 +1,5 @@
 python train.py --epoch 150 --batch-size 16 --img 640 --cache ram
 
 python val.py --weights runs/train/yolov5s/weights/best.pt --data VOC_five.yaml --exist-ok
+
+python train.py --data data/VOC_five.yaml --cfg cfg/attention/yolov5s-MultiScaleAttention.yaml --epoch 150 --batch-size 16 --img 640 --name cfg

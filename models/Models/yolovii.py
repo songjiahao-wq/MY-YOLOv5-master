@@ -2316,7 +2316,34 @@ class MDConv(nn.Module):
         split_x = torch.split(x, self.split_channels, dim=1)
         outputs = [layer(sp_x) for layer,sp_x in zip(self.layers, split_x)]
         return torch.cat(outputs, dim=1)
-# Focus + upsample + concat = CFN
+#CFN
+class FusionModel(nn.Module):
+    def __init__(self, in_channels, middle_channels, out_channels):
+        super(FusionModel, self).__init__()
+        self.focus = Fusion_Focus(in_channels, middle_channels)
+        self.up_sample = UpSample(out_channels, middle_channels)
+        self.concat = nn.Conv2d(middle_channels * 3, middle_channels, kernel_size=1)
+    def forward(self, x):
+        x1 = self.focus(x[0])
+        x1_up = self.up_sample(x[2])
+        x = torch.cat([x1, x1_up, x[1]], dim=1)
+        return self.concat(x)
+class UpSample(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UpSample, self).__init__()
+        self.up_sample = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2, padding=0),
+            nn.ReLU(inplace=True)
+        )
+    def forward(self, x):
+        return self.up_sample(x)
+class Fusion_Focus(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Fusion_Focus, self).__init__()
+        self.conv = nn.Conv2d(in_channels * 4, out_channels, kernel_size=1)
+    def forward(self, x):
+        x = torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], dim=1)
+        return self.conv(x)
 
 
 if __name__ =="__main__":

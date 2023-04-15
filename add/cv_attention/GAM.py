@@ -20,13 +20,11 @@ class GAM_Attention(nn.Module):
         )
  
     def forward(self, x):
-        b, c, h, w = x.shape
-        x_permute = x.permute(0, 2, 3, 1).view(b, -1, c)
+        b, c, h, w = x.shape # bs,c,h,w
+        x_permute = x.permute(0, 2, 3, 1).view(b, -1, c) # bs,h*w,c
         x_att_permute = self.channel_attention(x_permute).view(b, h, w, c)
         x_channel_att = x_att_permute.permute(0, 3, 1, 2).sigmoid()
- 
         x = x * x_channel_att
- 
         x_spatial_att = self.spatial_attention(x).sigmoid()
         out = x * x_spatial_att
  
