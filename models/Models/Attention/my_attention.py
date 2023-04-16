@@ -425,7 +425,35 @@ class ACmix(nn.Module):
         out_conv = self.dep_conv(f_conv)
 
         return self.rate1 * out_att + self.rate2 * out_conv
+class SpectralAttention(nn.Module):
+    def __init__(self, in_channels):
+        super(SpectralAttention, self).__init__()
 
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Linear(in_channels, in_channels // 16)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(in_channels // 16, in_channels)
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+
+        # 计算注意力权重
+        y = self.avgpool(x).view(b, c)
+        y = self.fc1(y)
+        y = self.relu(y)
+        y = self.fc2(y)
+        attention_weights = torch.sigmoid(y).view(b, c, 1, 1)
+
+        # 计算傅里叶变换
+        x_fft = torch.fft.fft2(x)
+
+        # 应用注意力权重
+        x_fft_weighted = x_fft * attention_weights
+
+        # 反傅里叶变换
+        x_weighted = torch.fft.ifft2(x_fft_weighted).real
+
+        return x_weighted
 
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)

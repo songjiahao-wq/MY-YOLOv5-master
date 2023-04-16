@@ -20,7 +20,7 @@ from models.Models.research import Concat_bifpn
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
 
 from models.Models.Attention.SoftThresholdAttention import *
-from models.Models.Attention.my_attention import PSAModule_s, SPPFC,PSAMix
+from models.Models.Attention.my_attention import PSAModule_s, SPPFC,PSAMix, SpectralAttention
 from models.Models.Attention.MultiScaleAttention import MultiScaleAttention,MultiScaleAttentionCSPA,MultiScaleAttentionCSPB,MultiScaleFrequencyAttention,\
                     FrequencyAttention, MultiScaleFreqAttention,SoftThresholdAttentionResidual
 
