@@ -149,6 +149,12 @@ class Bottleneck_ATT(nn.Module):
     def forward(self, x):
         return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
 
+class Bottleneck_PConv(Bottleneck):
+    def __init__(self,c1, c2, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, shortcut=True, g=1, e=0.5)
+        c_ = int(c2 * e)  # hidden channels
+        self.cv2 = PConv(c_, c2, 4)
+
 class Bottleneck_MDconv(nn.Module):
     # Standard bottleneck
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
@@ -289,6 +295,12 @@ class C3TR(C3):
         c_ = int(c2 * e)
         self.m = TransformerBlock(c_, c_, 4, n)
 
+class C3PConv(C3):
+    # C3 module with TransformerBlock()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_PConv(c_, c_) for _ in range(n)))
 
 class C3SPP(C3):
     # C3 module with SPP()
@@ -3265,6 +3277,7 @@ class C3_Faster(C3):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(Faster_Block(c_, c_) for _ in range(n)))
+
 class PConv(nn.Module):
     def __init__(self, dim, ouc, n_div=4, forward='split_cat'):
         super().__init__()
@@ -3324,6 +3337,31 @@ class FEM(nn.Module):
         out = torch.cat(outputs, dim=1)
         out = self.cv2(out)
         return out
+#GhostBottleneckv1********************************
+class GhostConv(nn.Module):
+    # Ghost Convolution https://github.com/huawei-noah/ghostnet
+    def __init__(self, c1, c2, k=1, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, groups
+        super().__init__()
+        c_ = c2 // 2  # hidden channels
+        self.primary_conv = Conv(c1, c_, k=1, s=1, act=act)
+        self.cheap_operation = Conv(c_, c_, k=3, s=1, p=1, g=c_, act=act)
+
+    def forward(self, x):
+        y = self.primary_conv(x)
+        return torch.cat([y, self.cheap_operation(y)], 1)
+
+
+class GhostBottleneckv1(nn.Module):
+    # Ghost Bottleneck https://github.com/huawei-noah/ghostnet
+    def __init__(self, c1, c2, midc, k=5, s=1, use_se = False):  # ch_in, ch_mid, ch_out, kernel, stride, use_se
+        super().__init__()
+        assert s in [1, 2]
+        c_ = midc
+        self.conv = nn.Sequential(GhostConv(c1, c_, 1, 1),              # Expansion
+                                  Conv(c_, c_, 3, s=2, p=1, g=c_, act=False) if s == 2 else nn.Identity(),  # dw
+                                  # Squeeze-and-Excite
+                                  SeBlock(c_) if use_se else nn.Sequential(),
+                                  GhostConv(c_, c2, 1, 1, act=False))   # Squeeze pw-linear
 
 class CustomNetwork(nn.Module):
     def __init__(self, in_channels, out_channels, groups=16):
@@ -3352,6 +3390,171 @@ class CustomNetwork(nn.Module):
 
         return out
 
+        self.shortcut = nn.Identity() if (c1 == c2 and s == 1) else \
+                                                nn.Sequential(Conv(c1, c1, 3, s=s, p=1, g=c1, act=False), \
+                                                Conv(c1, c2, 1, 1, act=False)) # 避免stride=2时 通道数改变的情况
+
+    def forward(self, x):
+        # print(self.conv(x).shape)
+        # print(self.shortcut(x).shape)
+        return self.conv(x) + self.shortcut(x)
+
+#GhostBottleneckv1 end********************************
+#RFA exp start********************************
+
+class CAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(CAConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.ReLU())
+
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return self.conv(out)
+class CBAMConv(nn.Module):
+    def __init__(self, channel, out_channel, kernel_size, stride, reduction=16, spatial_kernel=7):
+        super().__init__()
+
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.mlp = nn.Sequential(
+            nn.Conv2d(channel, channel // reduction, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel // reduction, channel, 1, bias=False)
+        )
+
+        self.spatital = nn.Conv2d(2, 1, kernel_size=spatial_kernel,
+                                  padding=spatial_kernel // 2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+        self.conv = nn.Sequential(nn.Conv2d(channel, out_channel, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(out_channel),
+                                  nn.ReLU())
+
+    def forward(self, x):
+        max_out = self.mlp(self.max_pool(x))
+        avg_out = self.mlp(self.avg_pool(x))
+        channel_out = self.sigmoid(max_out + avg_out)
+        x = channel_out * x
+
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        spatial_out = self.sigmoid(self.spatital(torch.cat([max_out, avg_out], dim=1)))
+        x = spatial_out * x
+        return self.conv(x)
 
 
+class CAMConv(nn.Module):
+    def __init__(self, channel, out_channel, kernel_size, stride, reduction=16, spatial_kernel=7):
+        super().__init__()
+
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.mlp = nn.Sequential(
+            nn.Conv2d(channel, channel // reduction, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel // reduction, channel, 1, bias=False)
+        )
+        self.sigmoid = nn.Sigmoid()
+        self.conv = nn.Sequential(nn.Conv2d(channel, out_channel, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(out_channel),
+                                  nn.ReLU())
+
+    def forward(self, x):
+        max_out = self.mlp(self.max_pool(x))
+        avg_out = self.mlp(self.avg_pool(x))
+        channel_out = self.sigmoid(max_out + avg_out)
+        x = channel_out * x
+        return self.conv(x)
+#RFA exp start********************************
+# SKA+SPA Start**********************
+class SKAttention(nn.Module):
+
+    def __init__(self, channel=512,kernels=[1,3,5,7],reduction=16,group=1,L=32):
+        super().__init__()
+        self.d=max(L,channel//reduction)
+        self.convs=nn.ModuleList([])
+        for k in kernels:
+            self.convs.append(
+                nn.Sequential(OrderedDict([
+                    ('conv',nn.Conv2d(channel,channel,kernel_size=k,padding=k//2,groups=group)),
+                    ('bn',nn.BatchNorm2d(channel)),
+                    ('relu',nn.ReLU())
+                ]))
+            )
+        self.fc=nn.Linear(channel,self.d)
+        self.fcs=nn.ModuleList([])
+        for i in range(len(kernels)):
+            self.fcs.append(nn.Linear(self.d,channel))
+        self.softmax=nn.Softmax(dim=0)
+
+
+
+    def forward(self, x):
+        bs, c, _, _ = x.size()
+        conv_outs=[]
+        ### split
+        for conv in self.convs:
+            conv_outs.append(conv(x))
+        feats=torch.stack(conv_outs,0)#k,bs,channel,h,w
+
+        ### fuse
+        U=sum(conv_outs) #bs,c,h,w
+
+        ### reduction channel
+        S=U.mean(-1).mean(-1) #bs,c
+        Z=self.fc(S) #bs,d
+
+        ### calculate attention weight
+        weights=[]
+        for fc in self.fcs:
+            weight=fc(Z)
+            weights.append(weight.view(bs,c,1,1)) #bs,channel
+        attention_weughts=torch.stack(weights,0)#k,bs,channel,1,1
+        attention_weughts=self.softmax(attention_weughts)#k,bs,channel,1,1
+
+        ### fuse
+        V=(attention_weughts*feats).sum(0)
+        return V
+class SKSPA(nn.Module):
+    def __init__(self, channel=512, kernels=[1,3,5,7],reduction=16,group=1,L=32):
+        self.ca = SKAttention(channel, group=channel)
+        self.sa = SpatialAttention(kernels=7)
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        residual = x
+        out = self.ca(x)
+        out = out * self.sa(out)
+        return out + residual
 
