@@ -35,7 +35,7 @@ for fp in os.listdir(dirpath):
         except ZeroDivisionError:
             print(filename, '的 width有问题')
 
-
+        """有几个类被就设置几个，名字，如text=='smoke"""
         with open(os.path.join(newdir, fp.split('.')[0] + '.txt'), 'a+') as f:
             print(child.find('name').text)
             if child.find('name').text =='smoke':
