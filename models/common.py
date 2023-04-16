@@ -3325,5 +3325,33 @@ class FEM(nn.Module):
         out = self.cv2(out)
         return out
 
+class CustomNetwork(nn.Module):
+    def __init__(self, in_channels, out_channels, groups=16):
+        super(CustomNetwork, self).__init__()
+        groups = in_channels
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.group_conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, groups=groups)
+        self.softmax = nn.Softmax(dim=1)
+
+        self.group_conv2 = nn.Conv2d(in_channels, out_channels, kernel_size=(3, 3), groups=groups)
+        self.norm = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        residual = x
+
+        out1 = self.avgpool(residual)
+        out1 = self.group_conv1(out1)
+        out1 = self.softmax(out1)
+
+        out2 = self.group_conv2(residual)
+        out2 = self.norm(out2)
+        out2 = self.relu(out2)
+
+        out = out1 * out2
+
+        return out
+
+
 
 
