@@ -36,3 +36,4 @@ from models.Models.fighting_model.attention.EMSA import EMSA #emsa = EMSA(d_mode
 from models.Models.fighting_model.attention.ShuffleAttention import ShuffleAttention # se = ShuffleAttention(channel=512,G=8)
 from models.Models.fighting_model.attention.SGE import SpatialGroupEnhance #sge = SpatialGroupEnhance(groups=8)
 from models.Models.fighting_model.attention.A2Atttention import DoubleAttention #a2 = DoubleAttention(512,128,128,True)
+from models.Models.fighting_model.attention.Biformer import BiLevelRoutingAttention  #a2 = DoubleAttention(512,128,128,True)

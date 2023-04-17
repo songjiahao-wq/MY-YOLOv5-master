@@ -323,14 +323,15 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU,
-        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM,CBAMBlock2, GhostBottleneckv1}:#添加模块
+        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM,CBAMBlock2, GhostBottleneckv1,
+        C3_Bottleneck_ATT, RFCAConv}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR,CTR3, C3Ghost, C3x,
-                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv}:#添加模块
+                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
             elif m is nn.ConvTranspose2d:
@@ -339,7 +340,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                     # args[6] = math.gcd(c1, c2)
 
         #"""**************add Attention***************"""
-        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, PSAModule_s, SPPFC, CustomNetwork, SpectralAttention}:
+        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, PSAModule_s, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -398,7 +399,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-Acmix-CBAM.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'./yolov5s-ConvNextV2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

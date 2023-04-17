@@ -133,19 +133,27 @@ class Bottleneck(nn.Module):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 class Bottleneck_ATT(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, use_ATT=0.):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)
         self.add = shortcut and c1 == c2
-        # self.ATT = MultiScaleAttention(c_, c_, 1)
-        self.ATT = SoftThresholdAttentionResidual(c_)
-
-        # self.ATT = ECA(c2, c2)
+        has_ATT = use_ATT is not None and use_ATT > 0.
+        if has_ATT:
+            self.ATT = BiLevelRoutingAttention(c2,c2)
+            # self.ATT = MultiScaleAttention(c_, c_, 1)
+            # self.ATT = SoftThresholdAttentionResidual(c_)
+            # self.ATT = ECA(c2, c2)
+            # self.ATT = GAM_Attention(c2,c2)
+        else:
+            self.ATT = None
 
     def forward(self, x):
-        return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
+        if self.ATT is not None:
+            return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.ATT(self.cv2(self.cv1(x)))
+        else:
+            return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 class Bottleneck_PConv(Bottleneck):
     def __init__(self,c1, c2, shortcut=True, g=1, e=0.5):
@@ -222,6 +230,7 @@ class C3(nn.Module):
 
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+
 class C3_ATT(nn.Module):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -292,13 +301,23 @@ class C3TR(C3):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = TransformerBlock(c_, c_, 4, n)
-
+class C3_Bottleneck_ATT(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True,use_ATT=0., g=1, e=0.5, has_ATT=0):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.Sequential(*(Bottleneck_ATT(c_, c_, shortcut, g, e=1.0, use_ATT=use_ATT) for _ in range(n)))
+    def forward(self, x):
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
 class C3PConv(C3):
     # C3 module with TransformerBlock()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_PConv(c_, c_) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_PConv(c1, c2, n, shortcut, g, e) for _ in range(n)))
 
 class C3SPP(C3):
     # C3 module with SPP()
@@ -3506,6 +3525,63 @@ class CAMConv(nn.Module):
         channel_out = self.sigmoid(max_out + avg_out)
         x = channel_out * x
         return self.conv(x)
+class RFCAConv(nn.Module):
+    def __init__(self, c1, c2, kernel_size, stride):
+        super(RFCAConv, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.group_conv1 = Conv_L(c1, 9 *c1, k=1, g=c1)
+        self.group_conv2 = Conv_L(c1, 9 *c1, k=3, g=c1)
+        self.group_conv3 = Conv_L(c1, 9 *c1, k=5, g=c1)
+
+        self.softmax = nn.Softmax(dim=1)
+
+        self.group_conv = Conv(c1, 9 * c1, k=3, g=c1)
+        self.convDown = Conv(c1, c1, k=3, s=3,g=c1)
+        self.CA = CAConv(c1, c2, kernel_size, stride)
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x)
+
+        group1 = self.softmax(self.group_conv1(y))
+        group2 = self.softmax(self.group_conv2(y))
+        group3 = self.softmax(self.group_conv3(y))
+        # g1 =  torch.cat([group1, group2, group3], dim=1)
+
+        g2 = self.group_conv(x)
+
+        out1 = g2 * group1
+        out2 = g2 * group2
+        out3 = g2 * group3
+
+        out = sum([out1, out2, out3])
+        # 获取输入特征图的形状
+        batch_size, channels, height, width = out.shape
+
+        # 计算输出特征图的通道数
+        output_channels = channels // 9
+
+        # 重塑并转置特征图以将通道数分成3x3个子通道并扩展高度和宽度
+        out = out.view(batch_size, output_channels, 3, 3, height, width).permute(0, 1, 4, 2, 5,3).\
+                                                reshape(batch_size, output_channels, 3 * height, 3 * width)
+        # out = out.view(batch_size, output_channels, height*3, width*3)
+        out = self.convDown(out)
+        out = self.CA(out)
+        return out
+class Conv_L(nn.Module):
+    # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
+    default_act = nn.SiLU()  # default activation
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        # self.bn = nn.LayerNorm((c2, s, s))  # 修改此处，其中s表示height和width
+        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+
+    def forward(self, x):
+        return self.act(self.conv(x))
+
+    def forward_fuse(self, x):
+        return self.act(self.conv(x))
 #RFA exp start********************************
 # SKA+SPA Start**********************
 class SKAttention(nn.Module):
