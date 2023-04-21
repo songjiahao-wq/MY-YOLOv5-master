@@ -25,6 +25,7 @@ from models.Models.Attention.MultiScaleAttention import MultiScaleAttention,Mult
                     FrequencyAttention, MultiScaleFreqAttention,SoftThresholdAttentionResidual
 
 from add.cv_attention.Acmix import ACmix
+from add.cv_attention.Fcanet import MultiSpectralAttentionLayer
 from add.cv_attention.CBAM import CBAMBlock , CBAMBlock2
 from models.Models.fighting_model.attention.SEAttention import SEAttention #se = SEAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.SKAttention import SKAttention #se = SKAttention(channel=512,reduction=8)

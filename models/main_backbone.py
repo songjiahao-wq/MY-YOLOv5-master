@@ -1,6 +1,6 @@
 import torch, timm
 from thop import clever_format, profile
-
+import sys
 print(timm.list_models())
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
