@@ -40,6 +40,7 @@ import torch.nn.functional as F
 from timm.models.layers import DropPath
 from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention, )
 from add.cv_attention import CBAM, ShuffleAttention, SimAM
+from mmcv.ops import DeformConv2d
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -3422,7 +3423,7 @@ class CustomNetwork(nn.Module):
 #RFA exp start********************************
 
 class CAConv(nn.Module):
-    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=16):
         super(CAConv, self).__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
@@ -3437,8 +3438,7 @@ class CAConv(nn.Module):
         self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
         self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
                                   nn.BatchNorm2d(oup),
-                                  nn.ReLU())
-
+                                  nn.SiLU())
     def forward(self, x):
         identity = x
 
@@ -3572,6 +3572,338 @@ class Conv_L(nn.Module):
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
+class NSTConv(nn.Module): #NonLocalSpatialAttention
+    def __init__(self, in_channels, out_channel, k , s,inter_channels=None, mode="embedded_gaussian"):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.inter_channels = in_channels // 2 if inter_channels is None else inter_channels
+        self.mode = mode
+
+        self.theta = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.phi = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.g = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.W = nn.Conv2d(self.inter_channels, in_channels, kernel_size=1)
+
+        nn.init.constant_(self.W.weight, 0)
+        nn.init.constant_(self.W.bias, 0)
+        self.conv = nn.Sequential(nn.Conv2d(in_channels, out_channel, kernel_size=3, padding=3 // 2, stride=2),
+                                  nn.BatchNorm2d(out_channel),
+                                  nn.ReLU())
+    def forward(self, x):
+        batch_size, _, height, width = x.size()
+
+        theta = self.theta(x)
+        phi = self.phi(x)
+        g = self.g(x)
+
+        # Reshape and perform matrix multiplication
+        theta = theta.view(batch_size, self.inter_channels, -1)
+        phi = phi.view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
+        g = g.view(batch_size, self.inter_channels, -1)
+
+        attention = torch.matmul(theta, phi)
+        attention = torch.softmax(attention, dim=-1)
+
+        output = torch.matmul(attention, g)
+        output = output.view(batch_size, self.inter_channels, height, width)
+        output = self.W(output) + x
+        output = self.conv(output)
+        return output
+
+
+class GAMConv(nn.Module):
+    def __init__(self, in_channels,out_channel,k,s, rate=4):
+        super(GAMConv, self).__init__()
+
+        self.channel_attention = nn.Sequential(
+            nn.Linear(in_channels, int(in_channels / rate)),
+            nn.ReLU(inplace=True),
+            nn.Linear(int(in_channels / rate), in_channels)
+        )
+
+        self.spatial_attention = nn.Sequential(
+            nn.Conv2d(in_channels, int(in_channels / rate), kernel_size=7, padding=3),
+            nn.BatchNorm2d(int(in_channels / rate)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(int(in_channels / rate), in_channels, kernel_size=7, padding=3),
+            nn.BatchNorm2d(in_channels)
+        )
+        self.conv = nn.Sequential(nn.Conv2d(in_channels, out_channel, kernel_size=3, padding=3 // 2, stride=2),
+                                  nn.BatchNorm2d(out_channel),
+                                  nn.ReLU())
+
+    def forward(self, x):
+        b, c, h, w = x.shape  # bs,c,h,w
+        x_permute = x.permute(0, 2, 3, 1).view(b, -1, c)  # bs,h*w,c
+        x_att_permute = self.channel_attention(x_permute).view(b, h, w, c)
+        x_channel_att = x_att_permute.permute(0, 3, 1, 2).sigmoid()
+        x = x * x_channel_att
+        x_spatial_att = self.spatial_attention(x).sigmoid()
+        out = x * x_spatial_att
+        out = self.conv(out)
+        return out
+class SEWeightModule(nn.Module):
+
+    def __init__(self, channels, reduction=16):
+        super(SEWeightModule, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Conv2d(channels, channels//reduction, kernel_size=1, padding=0)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Conv2d(channels//reduction, channels, kernel_size=1, padding=0)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        out = self.avg_pool(x)
+        out = self.fc1(out)
+        out = self.relu(out)
+        out = self.fc2(out)
+        weight = self.sigmoid(out)
+
+        return weight
+class PSAConv(nn.Module):
+    def __init__(self, inplans, planes,k,s, conv_kernels=[3, 5, 7, 9], stride=1, conv_groups=[1, 4, 8, 16]):
+        super(PSAConv, self).__init__()
+        self.conv_1 = conv(inplans, planes//4, kernel_size=conv_kernels[0], padding=conv_kernels[0]//2,
+                            stride=stride, groups=conv_groups[0])
+        self.conv_2 = conv(inplans, planes//4, kernel_size=conv_kernels[1], padding=conv_kernels[1]//2,
+                            stride=stride, groups=conv_groups[1])
+        self.conv_3 = conv(inplans, planes//4, kernel_size=conv_kernels[2], padding=conv_kernels[2]//2,
+                            stride=stride, groups=conv_groups[2])
+        self.conv_4 = conv(inplans, planes//4, kernel_size=conv_kernels[3], padding=conv_kernels[3]//2,
+                            stride=stride, groups=conv_groups[3])
+        self.se = SEWeightModule(planes // 4)
+        self.split_channel = planes // 4
+        self.softmax = nn.Softmax(dim=1)
+        self.conv = nn.Sequential(nn.Conv2d(planes, planes, kernel_size=3, padding=3 // 2, stride=2),
+                                  nn.BatchNorm2d(planes),
+                                  nn.ReLU())
+    def forward(self, x):
+        batch_size = x.shape[0]
+        x1 = self.conv_1(x)
+        x2 = self.conv_2(x)
+        x3 = self.conv_3(x)
+        x4 = self.conv_4(x)
+
+        feats = torch.cat((x1, x2, x3, x4), dim=1)
+        feats = feats.view(batch_size, 4, self.split_channel, feats.shape[2], feats.shape[3])
+
+        x1_se = self.se(x1)
+        x2_se = self.se(x2)
+        x3_se = self.se(x3)
+        x4_se = self.se(x4)
+
+        x_se = torch.cat((x1_se, x2_se, x3_se, x4_se), dim=1)
+        attention_vectors = x_se.view(batch_size, 4, self.split_channel, 1, 1)
+        attention_vectors = self.softmax(attention_vectors)
+        feats_weight = feats * attention_vectors
+        for i in range(4):
+            x_se_weight_fp = feats_weight[:, i, :, :]
+            if i == 0:
+                out = x_se_weight_fp
+            else:
+                out = torch.cat((x_se_weight_fp, out), 1)
+        out = self.conv(out)
+        return out
+class MultiScaleCAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(MultiScaleCAConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+
+        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
+        self.downsample = nn.MaxPool2d(2)
+
+    def forward(self, x):
+        identity = x
+        b, c, h, w = x.shape
+        # Multi-scale context information
+        x_down = self.downsample(x)
+        x_up = self.upsample(x)
+
+        x_down = F.interpolate(x_down, size=(h, w), mode='bilinear', align_corners=False)
+        x_up = F.interpolate(x_up, size=(h, w), mode='bilinear', align_corners=False)
+
+        x_scales = [x, x_down, x_up]
+
+        out = 0
+        for i, x_scale in enumerate(x_scales):
+            n, c, h, w = x_scale.size()
+            x_h = self.pool_h(x_scale)
+            x_w = self.pool_w(x_scale).permute(0, 1, 3, 2)
+
+            y = torch.cat([x_h, x_w], dim=2)
+            y = self.conv1(y)
+            y = self.bn1(y)
+            y = self.act(y)
+
+            x_h, x_w = torch.split(y, [h, w], dim=2)
+            x_w = x_w.permute(0, 1, 3, 2)
+
+            a_h = self.conv_h(x_h).sigmoid()
+            a_w = self.conv_w(x_w).sigmoid()
+            out_scale = x_scale * a_w * a_h
+            # if i==1:
+            #     out_scale = x_down * a_w * a_h
+            # if i==2:
+            #     out_scale = x_up * a_w * a_h
+            if i == 0:
+                out = out_scale
+            else:
+                out += out_scale
+
+        out = out / len(x_scales)
+        return self.conv(out)
+
+
+class DyCAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(DyCAConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+
+        self.dynamic_weight_fc = nn.Sequential(
+            nn.Linear(inp, 2),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        # Compute dynamic weights
+        x_avg_pool = nn.AdaptiveAvgPool2d(1)(x)
+        x_avg_pool = x_avg_pool.view(x.size(0), -1)
+        dynamic_weights = self.dynamic_weight_fc(x_avg_pool)
+
+        out = identity * (dynamic_weights[:, 0].view(-1, 1, 1, 1) * a_w +
+                          dynamic_weights[:, 1].view(-1, 1, 1, 1) * a_h)
+
+        return self.conv(out)
+
+class NonCAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(NonCAConv, self).__init__()
+
+        self.theta = nn.Conv2d(inp, inp // reduction, kernel_size=1, stride=1, padding=0)
+        self.phi = nn.Conv2d(inp, inp // reduction, kernel_size=1, stride=1, padding=0)
+        self.g = nn.Conv2d(inp, inp // reduction, kernel_size=1, stride=1, padding=0)
+        self.out_conv = nn.Conv2d(inp // reduction, inp, kernel_size=1, stride=1, padding=0)
+
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+
+    def forward(self, x):
+        identity = x
+
+        batch_size, _, h, w = x.size()
+
+        theta_x = self.theta(x).view(batch_size, -1, h * w)
+        phi_x = self.phi(x).view(batch_size, -1, h * w)
+        g_x = self.g(x).view(batch_size, -1, h * w)
+
+        f = torch.matmul(theta_x.permute(0, 2, 1), phi_x)
+        f_div_C = f / torch.sqrt(torch.tensor(h * w).float())
+
+        y = torch.matmul(f_div_C, g_x.permute(0, 2, 1))
+        y = y.view(batch_size, -1, h, w)
+        y = self.out_conv(y)
+        y = torch.sigmoid(y)
+
+        out = identity * y
+        return self.conv(out)
+
+
+class DeformCAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(DeformCAConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+
+        # Deformable Convolution
+        self.offset_conv = nn.Conv2d(inp, inp, kernel_size=1, padding=0)
+        self.deform_conv = DeformConv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
+        self.bn2 = nn.BatchNorm2d(oup)
+        self.silu = nn.SiLU()
+
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        # Deformable Convolution
+        offset = self.offset_conv(out)
+        out = self.deform_conv(out, offset)
+        out = self.bn2(out)
+        out = self.silu(out)
+
+        return out
+
+
+
 #RFA exp start********************************
 # SKA+SPA Start**********************
 class SKAttention(nn.Module):
