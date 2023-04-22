@@ -324,7 +324,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU,
         CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM,CBAMBlock2, GhostBottleneckv1,
-        C3_Bottleneck_ATT, RFCAConv, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv}:#添加模块
+        C3_Bottleneck_ATT, RFCAConv, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv, DeformCAConv2}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
