@@ -3520,9 +3520,9 @@ class RFCAConv(nn.Module):
     def __init__(self, c1, c2, kernel_size, stride):
         super(RFCAConv, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.group_conv1 = Conv_L(c1, 9 *c1, k=1, g=c1)
-        self.group_conv2 = Conv_L(c1, 9 *c1, k=3, g=c1)
-        self.group_conv3 = Conv_L(c1, 9 *c1, k=5, g=c1)
+        self.group_conv1 = Conv_L(c1, 3 *c1, k=1, g=c1)
+        self.group_conv2 = Conv_L(c1, 3 *c1, k=3, g=c1)
+        self.group_conv3 = Conv_L(c1, 3 *c1, k=5, g=c1)
 
         self.softmax = nn.Softmax(dim=1)
 
@@ -3549,11 +3549,58 @@ class RFCAConv(nn.Module):
         batch_size, channels, height, width = out.shape
 
         # 计算输出特征图的通道数
-        output_channels = channels // 9
+        output_channels = channels // 3
 
         # 重塑并转置特征图以将通道数分成3x3个子通道并扩展高度和宽度
         out = out.view(batch_size, output_channels, 3, 3, height, width).permute(0, 1, 4, 2, 5,3).\
                                                 reshape(batch_size, output_channels, 3 * height, 3 * width)
+        # out = out.view(batch_size, output_channels, height*3, width*3)
+        out = self.convDown(out)
+        out = self.CA(out)
+        return out
+class RFCAConv2(nn.Module):
+    def __init__(self, c1, c2, kernel_size, stride):
+        super(RFCAConv2, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.group_conv1 = Conv_L(c1, 3 *c1, k=1, g=c1)
+        self.group_conv2 = Conv_L(c1, 3 *c1, k=3, g=c1)
+        self.group_conv3 = Conv_L(c1, 3 *c1, k=5, g=c1)
+
+        self.softmax = nn.Softmax(dim=1)
+
+        self.group_conv = Conv(c1, 3 * c1, k=3, g=c1)
+        self.convDown = Conv(c1, c1, k=3, s=3,g=c1)
+        self.CA = CAConv(c1, c2, kernel_size, stride)
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x)
+
+        group1 = self.softmax(self.group_conv1(y))
+        group2 = self.softmax(self.group_conv2(y))
+        group3 = self.softmax(self.group_conv3(y))
+        # g1 =  torch.cat([group1, group2, group3], dim=1)
+
+        g1 = self.group_conv(x)
+        # g2 = self.group_conv(x)
+        # g3 = self.group_conv(x)
+
+        out1 = g1 * group1
+        out2 = g1 * group2
+        out3 = g1 * group3
+
+        out =torch.cat([out1, out2, out3],dim=1)
+        # 获取输入特征图的形状
+        batch_size, channels, height, width = out.shape
+
+        # 计算输出特征图的通道数
+        output_channels = c
+
+        # 重塑并转置特征图以将通道数分成3x3个子通道并扩展高度和宽度
+        out = out.view(batch_size, output_channels, 3, 3, height, width).permute(0, 1, 4, 2, 5, 3).\
+                                                reshape(batch_size, output_channels, 3 * height, 3 * width)
+        # 假设输入特征图为 input_feature_map，形状为 (batch_size, output_channels, height, width)
+        unfolded = out.unfold(2, 3, 3).unfold(3, 3, 3)
+        out = unfolded.permute(0, 1, 2, 4, 3, 5).reshape(batch_size, output_channels, 3 * height, 3 * width)
         # out = out.view(batch_size, output_channels, height*3, width*3)
         out = self.convDown(out)
         out = self.CA(out)
@@ -4025,3 +4072,9 @@ class SKSPA(nn.Module):
         out = out * self.sa(out)
         return out + residual
 
+if __name__ =="__main__":
+    x = torch.randn(1, 64, 20, 20)
+    b, c, h, w = x.shape
+    net = SKAttention(64)
+    y = net(x)
+    print(y.size())
