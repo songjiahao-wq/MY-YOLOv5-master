@@ -146,6 +146,29 @@ class BaseModel(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.forward_fuse  # update forward
+
+            if type(m) is PatchEmbed:
+                m.proj = fuse_conv_and_bn(m.proj, m.norm)
+                delattr(m, 'norm')  # remove batchnorm
+                m.forward = m.fuseforward
+            if type(m) is PatchMerging:
+                m.reduction = fuse_conv_and_bn(m.reduction, m.norm)
+                delattr(m, 'norm')  # remove batchnorm
+                m.forward = m.fuseforward
+            if type(m) is MLPBlock:
+                if hasattr(m, 'mlp'):
+                    re_mlp = nn.Sequential(
+                        nn.Conv2d(m.mlp[0].in_channels, m.mlp[0].out_channels,
+                                  kernel_size=m.mlp[0].kernel_size, stride=m.mlp[0].stride,
+                                  padding=m.mlp[0].padding, groups=m.mlp[0].groups),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(m.mlp[3].in_channels, m.mlp[3].out_channels,
+                                  kernel_size=m.mlp[3].kernel_size, stride=m.mlp[3].stride,
+                                  padding=m.mlp[3].padding, bias=False),
+                    )
+                    re_mlp[0] = fuse_conv_and_bn(m.mlp[0], m.mlp[1])
+                    # delattr(m, 'se')
+                    m.mlp = re_mlp
         self.info()
         return self
 
@@ -323,7 +346,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 BottleneckCSP, C3, C3f, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
-        ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU,
+        ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed,BasicStage, PatchMerging,
         CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM,CBAMBlock2, GhostBottleneckv1,
         C3_Bottleneck_ATT, RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv, DeformCAConv2}:#添加模块
             c1, c2 = ch[f], args[0]
@@ -335,6 +358,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
+
+            if m in {BasicStage}:
+                args.pop(1)
+
             elif m is nn.ConvTranspose2d:
                 if len(args) >= 7:
                     args[6] = make_divisible(args[6] * gw, 8)
@@ -400,7 +427,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'./yolov5s.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5-Ghostv2-2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
