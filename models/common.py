@@ -3216,7 +3216,7 @@ class BiFPN_Add3(nn.Module):
         return self.conv(self.silu(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
 
 
-
+#Faster**********************************************************************
 class Partial_conv3(nn.Module):
     def __init__(self, dim, n_div, forward):
         super().__init__()
@@ -3243,8 +3243,6 @@ class Partial_conv3(nn.Module):
         x1 = self.partial_conv3(x1)
         x = torch.cat((x1, x2), 1)
         return x
-
-
 class Faster_Block(nn.Module):
     def __init__(self,
                  inc,
@@ -3300,15 +3298,12 @@ class Faster_Block(nn.Module):
         x = shortcut + self.drop_path(
             self.layer_scale.unsqueeze(-1).unsqueeze(-1) * self.mlp(x))
         return x
-
-
 class C3_Faster(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(Faster_Block(c_, c_) for _ in range(n)))
-
 class PConv(nn.Module):
     def __init__(self, dim, ouc, n_div=4, forward='split_cat'):
         super().__init__()
@@ -3338,6 +3333,134 @@ class PConv(nn.Module):
         x = torch.cat((x1, x2), 1)
         x = self.conv(x)
         return x
+class MLPBlock(nn.Module):
+    def __init__(self,
+                 dim,
+                 n_div,
+                 mlp_ratio,
+                 drop_path,
+                 layer_scale_init_value,
+                 act_layer,
+                 norm_layer,
+                 pconv_fw_type
+                 ):
+
+        super().__init__()
+        self.dim = dim
+        self.mlp_ratio = mlp_ratio
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.n_div = n_div
+
+        mlp_hidden_dim = int(dim * mlp_ratio)
+
+        mlp_layer = [
+            nn.Conv2d(dim, mlp_hidden_dim, 1, bias=False),
+            norm_layer(mlp_hidden_dim),
+            act_layer(),
+            nn.Conv2d(mlp_hidden_dim, dim, 1, bias=False)
+        ]
+
+        self.mlp = nn.Sequential(*mlp_layer)
+
+        self.spatial_mixing = Partial_conv3(
+            dim,
+            n_div,
+            pconv_fw_type
+        )
+
+        if layer_scale_init_value > 0:
+            self.layer_scale = nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+            self.forward = self.forward_layer_scale
+        else:
+            self.forward = self.forward
+
+    def forward(self, x):
+        shortcut = x
+        x = self.spatial_mixing(x)
+        x = shortcut + self.drop_path(self.mlp(x))
+        return x
+
+    def forward_layer_scale(self, x):
+        shortcut = x
+        x = self.spatial_mixing(x)
+        x = shortcut + self.drop_path(
+            self.layer_scale.unsqueeze(-1).unsqueeze(-1) * self.mlp(x))
+        return x
+class BasicStage(nn.Module):
+    def __init__(self,
+                 dim,
+                 depth=1,
+                 n_div=4,
+                 mlp_ratio=2,
+                 # drop_path=[0.0],
+                 layer_scale_init_value=0,
+                 norm_layer=nn.BatchNorm2d,
+                 act_layer=nn.ReLU,
+                 pconv_fw_type='split_cat'
+                 ):
+        super().__init__()
+        dpr = [x.item()
+               for x in torch.linspace(0, 0.0, sum([1, 2, 8, 2]))]
+        blocks_list = [
+            MLPBlock(
+                dim=dim,
+                n_div=n_div,
+                mlp_ratio=mlp_ratio,
+                drop_path=dpr[i],
+                layer_scale_init_value=layer_scale_init_value,
+                norm_layer=norm_layer,
+                act_layer=act_layer,
+                pconv_fw_type=pconv_fw_type
+            )
+            for i in range(depth)
+        ]
+
+        self.blocks = nn.Sequential(*blocks_list)
+
+    def forward(self, x):
+        x = self.blocks(x)
+        return x
+class PatchEmbed(nn.Module):
+
+    def __init__(self, in_chans, embed_dim, patch_size, patch_stride, norm_layer):
+        super().__init__()
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_stride, bias=False)
+        if norm_layer is not None:
+            self.norm = norm_layer(embed_dim)
+        else:
+            self.norm = nn.Identity()
+
+    def forward(self, x):
+        x = self.norm(self.proj(x))
+        return x
+
+    def fuseforward(self, x):
+        x = self.proj(x)
+        return x
+class PatchMerging(nn.Module):
+
+    def __init__(self, dim, out_dim, k, patch_stride2, norm_layer=nn.BatchNorm2d):
+        super().__init__()
+        self.reduction = nn.Conv2d(dim, out_dim, kernel_size=k, stride=patch_stride2, bias=False)
+        if norm_layer is not None:
+            self.norm = norm_layer(out_dim)
+        else:
+            self.norm = nn.Identity()
+
+    def forward(self, x):
+        x = self.norm(self.reduction(x))
+        return x
+
+    def fuseforward(self, x):
+        x = self.reduction(x)
+        return x
+class C3_P(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(MLPBlock(c_, c_) for _ in range(n)))
+#Faster end**********************************************************************
 #s
 class FEM(nn.Module):
     def __init__(self, in_channels, out_chanels, d=[1, 1, 1], kernel_sizes=[1, 3, 5]):
@@ -3969,7 +4092,7 @@ from torchvision.ops import deform_conv2d
 
 class DeformCAConv2(nn.Module):
     def __init__(self, inp, oup, kernel_size, stride, reduction=32):
-        super(DeformCAConv, self).__init__()
+        super(DeformCAConv2, self).__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
 
