@@ -132,8 +132,8 @@ class GhostModuleV2(nn.Module):
 
 class GhostBottleneckV2(nn.Module):
 
-    def __init__(self, in_chs, out_chs, mid_chs, dw_kernel_size=3,
-                 stride=1, se_ratio=0.,  layer_id=2, act_layer=nn.ReLU, args=None):
+    def __init__(self, in_chs, mid_chs, out_chs, dw_kernel_size=3,
+                 stride=1, act_layer=nn.ReLU, se_ratio=0., layer_id=None, args=None):
         super(GhostBottleneckV2, self).__init__()
         has_se = se_ratio is not None and se_ratio > 0.
         self.stride = stride
@@ -212,9 +212,9 @@ class GhostNetV2(nn.Module):
                 layer_id += 1
             stages.append(nn.Sequential(*layers))
 
-        # output_channel = _make_divisible(exp_size * width, 4)
-        # stages.append(nn.Sequential(ConvBnAct(input_channel, output_channel, 1)))
-        # input_channel = output_channel
+        output_channel = _make_divisible(exp_size * width, 4)
+        stages.append(nn.Sequential(ConvBnAct(input_channel, output_channel, 1)))
+        input_channel = output_channel
 
         self.blocks = nn.Sequential(*stages)
 
@@ -287,33 +287,32 @@ if __name__ == "__main__":
     mode2 = ghostnetv2_model(3,240,4)
     mode3 = ghostnetv2_model(3,240,5)
 
-
+    # print(mode)
     model = ghostnetv2()
     model.eval()
     input = torch.randn(1, 3, 640, 640) #输入
-    # print(mode(input).shape)
+    print(mode(input).shape)
     # input = mode(input)
     # print(mode2(input).shape)
     # input = mode2(input)
-    print(model)
-    model1 = nn.Sequential(*list(model.children())[:3])
-    model2 = nn.Sequential(*list(model.children())[3][0])
-    model3 = nn.Sequential(*list(model.children())[3][1:3])
-    model4 = nn.Sequential(*list(model.children())[3][3:5])
-    model5 = nn.Sequential(*list(model.children())[3][5:7])
-    model6 = nn.Sequential(*list(model.children())[3][7:])
-    print(input.shape)
-    print(model1(input).shape)
-    input = model1(input)
-    print(model2(input).shape)
-    input = model2(input)
-    print(model3(input).shape)
-    input = model3(input)
-    print(model4(input).shape)
-    input = model4(input)
-    print(model5(input).shape)
-    input = model5(input)
-    print(model6(input).shape)
+    # model1 = nn.Sequential(*list(model.children())[:3])
+    # model2 = nn.Sequential(*list(model.children())[3][0])
+    # model3 = nn.Sequential(*list(model.children())[3][1:3])
+    # model4 = nn.Sequential(*list(model.children())[3][3:5])
+    # model5 = nn.Sequential(*list(model.children())[3][5:7])
+    # model6 = nn.Sequential(*list(model.children())[3][7:])
+    # print(input.shape)
+    # print(model1(input).shape)
+    # input = model1(input)
+    # print(model2(input).shape)
+    # input = model2(input)
+    # print(model3(input).shape)
+    # input = model3(input)
+    # print(model4(input).shape)
+    # input = model4(input)
+    # print(model5(input).shape)
+    # input = model5(input)
+    # print(model6(input).shape)
 
 
 

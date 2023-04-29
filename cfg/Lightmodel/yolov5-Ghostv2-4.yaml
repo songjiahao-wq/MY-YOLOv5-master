@@ -1,5 +1,8 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 
+#YOLOv5s-Ghostv2-3-4 summary: 567 layers, 6038517 parameters, 6038517 gradients 7.901  GFLOPs
+#forward (ms) 104.5 backward (ms) 183.8
+
 # Parameters
 nc: 80  # number of classes
 depth_multiple: 0.33  # model depth multiple

@@ -121,6 +121,7 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
             # print(m)
             x = m(x)  # run
+            # print(x,'aaaaaaaaaaaaaaaaaaaaa')
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -350,7 +351,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed,BasicStage, PatchMerging,
-        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2,
+        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
         C3_Bottleneck_ATT, RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv, DeformCAConv2,}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
@@ -430,11 +431,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5s-Ghostv2-3-4.yaml', help='model.yaml')
-    parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5-Ghostv2-2.yaml', help='model.yaml')
+    parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--profile', action='store_true', help='profile model speed')
-    parser.add_argument('--line-profile', action='store_true', default=True, help='profile model speed layer by layer')
+    parser.add_argument('--profile', action='store_true',default=True, help='profile model speed')
+    parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', default=True, help='test all yolo*.yaml')
     opt = parser.parse_args()
     opt.cfg = check_yaml(opt.cfg)  # check YAML
