@@ -12,6 +12,8 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                 SCConv,Bottleneck_DCN, FusionModel
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
 from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
+# from models.Models.fighting_model.backbone.Ghostnetv2 import ghostnetv2_model, GhostBottleneckV2
+
 
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 from models.Models.Attention.SPPAF import C3SPPAF
