@@ -4033,6 +4033,49 @@ class PSAConv(nn.Module):
                 out = torch.cat((x_se_weight_fp, out), 1)
         out = self.conv(out)
         return out
+class PSA_sConv(nn.Module):
+
+    def __init__(self, inplans, planes, conv_kernels=[3, 5, 7, 9], stride=1, conv_groups=[1, 4, 8, 16]):
+        super(PSA_sConv, self).__init__()
+        self.dimplanes = planes// 4
+        # self.conv_1 = conv(inplans, planes//4, kernel_size=conv_kernels[0], padding=conv_kernels[0]//2,
+        #                     stride=stride, groups=conv_groups[0])
+        # self.conv_2 = conv(inplans, planes//4, kernel_size=conv_kernels[1], padding=conv_kernels[1]//2,
+        #                     stride=stride, groups=conv_groups[1])
+        # self.conv_3 = conv(inplans, planes//4, kernel_size=conv_kernels[2], padding=conv_kernels[2]//2,
+        #                     stride=stride, groups=conv_groups[2])
+        # self.conv_4 = conv(inplans, planes//4, kernel_size=conv_kernels[3], padding=conv_kernels[3]//2,
+        #                     stride=stride, groups=conv_groups[3])
+        self.se = ECAAttention()
+        self.split_channel = planes // 4
+        self.softmax = nn.Softmax(dim=1)
+        self.conv = nn.Sequential(nn.Conv2d(planes, planes, kernel_size=3, padding=3 // 2, stride=2),
+                                  nn.BatchNorm2d(planes),
+                                  nn.ReLU())
+    def forward(self, x):
+        batch_size,H,W = x.shape[0],x.shape[2],x.shape[3]
+        x1,x2,x3,x4 = torch.split(x,(self.dimplanes,self.dimplanes,self.dimplanes,self.dimplanes),dim=1)
+
+        feats = torch.cat((x1, x2, x3, x4), dim=1)
+        feats = feats.view(batch_size, 4, self.split_channel, feats.shape[2], feats.shape[3])
+
+        x1_se = self.se(x1)
+        x2_se = self.se(x2)
+        x3_se = self.se(x3)
+        x4_se = self.se(x4)
+
+        x_se = torch.cat((x1_se, x2_se, x3_se, x4_se), dim=1)
+        attention_vectors = x_se.view(batch_size, 4, self.split_channel, H, W) #bs,c/4,H,W
+        attention_vectors = self.softmax(attention_vectors)
+        feats_weight = feats * attention_vectors
+        for i in range(4):
+            x_se_weight_fp = feats_weight[:, i, :, :]
+            if i == 0:
+                out = x_se_weight_fp
+            else:
+                out = torch.cat((x_se_weight_fp, out), 1)
+        out = self.conv(out)
+        return out
 class MultiScaleCAConv(nn.Module):
     def __init__(self, inp, oup, kernel_size, stride, reduction=32):
         super(MultiScaleCAConv, self).__init__()
@@ -4180,7 +4223,65 @@ class NonCAConv(nn.Module):
         out = identity * y
         return self.conv(out)
 
+class SKConv(nn.Module):
 
+    def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1,3,5,7],reduction=32,group=16,L=32):
+        super().__init__()
+        inp =channel
+        group = channel
+        oup = c2
+        self.d=max(L,channel//reduction)
+        self.convs=nn.ModuleList([])
+        for k in kernels:
+            self.convs.append(
+                nn.Sequential(OrderedDict([
+                    ('conv',nn.Conv2d(channel,channel,kernel_size=k,padding=k//2,groups=group)),
+                    ('bn',nn.BatchNorm2d(channel)),
+                    ('relu',nn.ReLU()),
+                ]))
+            )
+        self.fc=nn.Linear(channel * 21 ,self.d)
+        self.fcs=nn.ModuleList([])
+        for i in range(len(kernels)):
+            self.fcs.append(nn.Linear(self.d,channel))
+        self.softmax=nn.Softmax(dim=0)
+        self.avg_pool1 =    nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 =    nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 =    nn.AdaptiveAvgPool2d(4)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.ReLU())
+    def forward(self, x):
+        bs, c, _, _ = x.size()
+        conv_outs=[]
+        ### split
+        for conv in self.convs:
+            conv_outs.append(conv(x))
+        feats=torch.stack(conv_outs,0)#k,bs,channel,h,w
+
+        ### fuse
+        U=sum(conv_outs) #bs,c,h,w
+
+        y1 = self.avg_pool1(x).reshape((bs, -1))
+        y2 = self.avg_pool2(x).reshape((bs, -1))
+        y3 = self.avg_pool4(x).reshape((bs, -1))
+        S = torch.cat((y1, y2, y3), 1)
+        ### reduction channel
+        # S=U.mean(-1).mean(-1) #bs,c
+        Z=self.fc(S) #bs,d
+
+        ### calculate attention weight
+        weights=[]
+        for fc in self.fcs:
+            weight=fc(Z)
+            weights.append(weight.view(bs,c,1,1)) #bs,channel
+        attention_weughts=torch.stack(weights,0)#k,bs,channel,1,1
+        attention_weughts=self.softmax(attention_weughts)#k,bs,channel,1,1
+
+        ### fuse
+        V=(attention_weughts*feats).sum(0)
+        V = self.conv(V)
+        return V
 class DeformCAConv(nn.Module):
     def __init__(self, inp, oup, kernel_size, stride, reduction=32):
         super(DeformCAConv, self).__init__()

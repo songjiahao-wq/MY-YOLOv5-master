@@ -12,7 +12,7 @@ anchors:
 # YOLOv5 v6.0 backbone
 backbone:
   # [from, number, module, args]
-  [[-1, 1, Conv, [32, 6, 2, 2]],  # 0-P1/2
+  [[-1, 1, Conv, [24, 6, 2, 2]],  # 0-P1/2
    [-1, 1, DeformCAConv, [24, 3, 2]],  # 1-P2/4
    [-1, 1, GGhostRegNet, [24, 0]],
    [-1, 1, DeformCAConv, [56, 3, 2]],  # 3-P3/8

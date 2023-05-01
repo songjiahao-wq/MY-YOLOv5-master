@@ -61,14 +61,14 @@ class PSAModule_s(nn.Module):
     def __init__(self, inplans, planes, conv_kernels=[3, 5, 7, 9], stride=1, conv_groups=[1, 4, 8, 16]):
         super(PSAModule_s, self).__init__()
         self.dimplanes = planes// 4
-        self.conv_1 = conv(inplans, planes//4, kernel_size=conv_kernels[0], padding=conv_kernels[0]//2,
-                            stride=stride, groups=conv_groups[0])
-        self.conv_2 = conv(inplans, planes//4, kernel_size=conv_kernels[1], padding=conv_kernels[1]//2,
-                            stride=stride, groups=conv_groups[1])
-        self.conv_3 = conv(inplans, planes//4, kernel_size=conv_kernels[2], padding=conv_kernels[2]//2,
-                            stride=stride, groups=conv_groups[2])
-        self.conv_4 = conv(inplans, planes//4, kernel_size=conv_kernels[3], padding=conv_kernels[3]//2,
-                            stride=stride, groups=conv_groups[3])
+        # self.conv_1 = conv(inplans, planes//4, kernel_size=conv_kernels[0], padding=conv_kernels[0]//2,
+        #                     stride=stride, groups=conv_groups[0])
+        # self.conv_2 = conv(inplans, planes//4, kernel_size=conv_kernels[1], padding=conv_kernels[1]//2,
+        #                     stride=stride, groups=conv_groups[1])
+        # self.conv_3 = conv(inplans, planes//4, kernel_size=conv_kernels[2], padding=conv_kernels[2]//2,
+        #                     stride=stride, groups=conv_groups[2])
+        # self.conv_4 = conv(inplans, planes//4, kernel_size=conv_kernels[3], padding=conv_kernels[3]//2,
+        #                     stride=stride, groups=conv_groups[3])
         self.se = ECAAttention()
         self.split_channel = planes // 4
         self.softmax = nn.Softmax(dim=1)
