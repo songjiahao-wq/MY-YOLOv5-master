@@ -232,7 +232,36 @@ class C3(nn.Module):
 
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+class C3_Res2(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
 
+        self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.cv3 = Conv((2 + len(self.m)) * c_, c2, 1)  # optional act=FReLU(c2)
+
+    def forward(self, x):
+        y = []
+        x1 =self.cv1(x)
+        y.append(x1)
+        for i in range(len(self.m)):
+            if i == 0:
+                sp = y[-1]
+            else:
+                sp = y[-1] + sp
+            sp  = self.m[i](sp)
+            if i ==0:
+                out = sp
+            else:
+                out = torch.cat((out, sp), dim=1)
+
+        y.append(out)
+        y.append(self.cv2(x))
+
+        return self.cv3(torch.cat(y, dim=1))
 class C3_ATT(nn.Module):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -4398,11 +4427,136 @@ class DeformCAConv2(nn.Module):
         out = self.silu(out)
 
         return out
+class CAConv2(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=16):
+        super(CAConv2, self).__init__()
+        self.pool_h1 = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w1 = nn.AdaptiveAvgPool2d((1, None))
 
+        self.pool_h2 = nn.AdaptiveAvgPool2d((None, 2))
+        self.pool_w2 = nn.AdaptiveAvgPool2d((2, None))
 
+        self.pool_h3 = nn.AdaptiveAvgPool2d((None, 4))
+        self.pool_w3 = nn.AdaptiveAvgPool2d((4, None))
 
-#RFA exp start********************************
-# SKA+SPA Start**********************
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h1 = self.pool_h1(x) #n,c,h,1
+        x_w1 = self.pool_w1(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h2 = self.pool_h2(x) #n,c,h,1
+        x_w2 = self.pool_w2(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h3 = self.pool_h3(x) #n,c,h,1
+        x_w3 = self.pool_w3(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h2 = F.interpolate(x_h2, size=(h, 1), mode='nearest')
+        x_w2 = F.interpolate(x_w2, size=(w, 1), mode='nearest')
+
+        x_h3 = F.interpolate(x_h3, size=(h, 1), mode='nearest')
+        x_w3 = F.interpolate(x_w3, size=(w, 1), mode='nearest')
+
+        x_h = x_h1 + x_h2 + x_h3
+        x_w = x_w1 + x_w2 + x_w3
+
+        # # Combine the pooling results using concatenation
+        # x_h = torch.cat([x_h1, F.interpolate(x_h2, size=(h, 1), mode='nearest'),
+        #                  F.interpolate(x_h3, size=(h, 1), mode='nearest')], dim=1)
+        # x_w = torch.cat([x_w1, F.interpolate(x_w2, size=(1, w), mode='nearest'),
+        #                  F.interpolate(x_w3, size=(1, w), mode='nearest')], dim=1)
+        y = torch.cat([x_h, x_w], dim=2) #n,c,2h,1
+        y = self.conv1(y)  #n,c/16,2h,1
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2) #n,c/16,h,1
+        x_w = x_w.permute(0, 1, 3, 2) #n,c/16,1,w
+
+        a_h = self.conv_h(x_h).sigmoid()   #n,c,1,w
+        a_w = self.conv_w(x_w).sigmoid() #n,c,1,w
+
+        out = identity * a_w * a_h
+
+        return self.conv(out)
+class DyMCAConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(DyMCAConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+
+        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
+        self.downsample = nn.MaxPool2d(2)
+
+        self.dynamic_weight_fc = nn.Sequential(
+            nn.Linear(inp * 3, 3),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        identity = x
+        b,c,h,w = x.shape
+        # Multi-scale context information
+        x_down = self.downsample(x)
+        x_up = self.upsample(x)
+
+        x_down = F.interpolate(x_down, size=(h, w), mode='bilinear', align_corners=False)
+        x_up = F.interpolate(x_up, size=(h, w), mode='bilinear', align_corners=False)
+
+        x_scales = [x, x_down, x_up]
+
+        # Compute dynamic weights
+        x_concat = torch.cat(x_scales, dim=1)
+        x_avg_pool = nn.AdaptiveAvgPool2d(1)(x_concat)
+        x_avg_pool = x_avg_pool.view(x_concat.size(0), -1)
+        dynamic_weights = self.dynamic_weight_fc(x_avg_pool)
+
+        out = 0
+        for i, x_scale in enumerate(x_scales):
+            n, c, h, w = x_scale.size()
+            x_h = self.pool_h(x_scale)
+            x_w = self.pool_w(x_scale).permute(0, 1, 3, 2)
+
+            y = torch.cat([x_h, x_w], dim=2)
+            y = self.conv1(y)
+            y = self.bn1(y)
+            y = self.act(y)
+
+            x_h, x_w = torch.split(y, [h, w], dim=2)
+            x_w = x_w.permute(0, 1, 3, 2)
+
+            a_h = self.conv_h(x_h).sigmoid()
+            a_w = self.conv_w(x_w).sigmoid()
+
+            out_scale = identity * a_w * a_h
+            out += dynamic_weights[:, i].view(-1, 1, 1, 1) * out_scale
+
+        return self.conv(out)
+
 class SKAttention(nn.Module):
 
     def __init__(self, channel=512,kernels=[1,3,5,7],reduction=16,group=1,L=32):
