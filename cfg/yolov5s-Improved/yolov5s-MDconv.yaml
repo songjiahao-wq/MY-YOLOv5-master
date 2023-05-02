@@ -1,5 +1,5 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
-
+#MixConv: Mixed Depthwise Convolutional Kernels包含多种大小卷积核的Depthwise conv，方法简单有效，同flops和同param量下可以获得SOTA性能。
 # Parameters
 nc: 80  # number of classes
 depth_multiple: 0.33  # model depth multiple

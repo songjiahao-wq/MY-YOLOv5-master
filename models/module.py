@@ -13,6 +13,7 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
 from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
 from models.Models.fighting_model.backbone.Ghostnetv2 import ghostnetv2_model
+from models.Models.fighting_model.backbone.Res2net import Bottle2neck
 
 
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
@@ -26,9 +27,15 @@ from models.Models.Attention.my_attention import PSAModule_s, SPPFC,PSAMix, Spec
 from models.Models.Attention.MultiScaleAttention import MultiScaleAttention,MultiScaleAttentionCSPA,MultiScaleAttentionCSPB,MultiScaleFrequencyAttention,\
                     FrequencyAttention, MultiScaleFreqAttention,SoftThresholdAttentionResidual
 
+
 from add.cv_attention.Acmix import ACmix
 from add.cv_attention.Fcanet import MultiSpectralAttentionLayer
 from add.cv_attention.CBAM import CBAMBlock , CBAMBlock2
+
+from models.Models.fighting_model.conv.ODConv import ODConv2d
+from models.Models.fighting_model.conv.CondConv import CondConv
+from models.Models.fighting_model.conv.DynamicConv import DynamicConv
+
 from models.Models.fighting_model.attention.SEAttention import SEAttention #se = SEAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.SKAttention import SKAttention #se = SKAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.BAM import BAMBlock #bam = BAMBlock(channel=512,reduction=16,dia_val=2)
