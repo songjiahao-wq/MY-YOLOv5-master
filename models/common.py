@@ -3535,7 +3535,7 @@ class PatchMerging(nn.Module):
         x = self.reduction(x)
         return x
 class C3_P(C3):
-    # C3 module with cross-convolutions
+    # C3 module with Faster-PConv
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)

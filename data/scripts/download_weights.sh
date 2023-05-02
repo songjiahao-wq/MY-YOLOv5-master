@@ -7,7 +7,7 @@
 #     ├── yolov5s.pt  ← downloads here
 #     ├── yolov5m.pt
 #     └── ...
-
+#自定义模型结构
 python - <<EOF
 from utils.downloads import attempt_download
 
