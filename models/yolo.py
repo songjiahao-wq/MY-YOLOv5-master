@@ -349,18 +349,19 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                 BottleneckCSP, C3, C3f, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,C3CA ,
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC, ASPP,
-            SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,
+            SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual,MobileNet_Block,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed,BasicStage, PatchMerging,
         CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
-        C3_Bottleneck_ATT, RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv, DeformCAConv2,PSA_sConv,
-        SKConv, CAConv2, CAConv3, DyMCAConv, C3_Res2}:#添加模块
+        C3_Bottleneck_ATT, C3_ODConv,
+            RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv, DeformCAConv, DeformCAConv2,PSA_sConv,
+        SKConv, CAConv2, CAConv3, DyMCAConv, C3_Res2, C3_Res2_2}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR,CTR3, C3Ghost, C3x,
-                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2}:#添加模块
+                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2, C3_ODConv, C3_Res2_2}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
 
@@ -432,7 +433,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s_conv-connect2-ATT.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-Res2-2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true',default=True, help='profile model speed')

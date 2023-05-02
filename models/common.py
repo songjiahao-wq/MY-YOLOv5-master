@@ -52,13 +52,31 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
     return p
 
 
-class Conv(nn.Module):
-    # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
-    default_act = nn.SiLU()  # default activation
+# class Conv(nn.Module):
+#     # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
+#     default_act = nn.SiLU()  # default activation
+#
+#     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+#         super().__init__()
+#         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+#         self.bn = nn.BatchNorm2d(c2)
+#         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+#
+#     def forward(self, x):
+#         return self.act(self.bn(self.conv(x)))
+#
+#     def forward_fuse(self, x):
+#         return self.act(self.conv(x))
 
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+class Conv(nn.Module):
+    default_act = nn.SiLU()
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True, custom_conv=None):
         super().__init__()
-        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        if custom_conv is None:
+            self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        else:
+            self.conv = custom_conv(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d)
         self.bn = nn.BatchNorm2d(c2)
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
@@ -158,7 +176,17 @@ class Bottleneck_ATT(nn.Module):
             return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.ATT(self.cv2(self.cv1(x)))
         else:
             return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+class Bottleneck_ODConv(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1, custom_conv=ODConv2d)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g, custom_conv=ODConv2d)
+        self.add = shortcut and c1 == c2
 
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 class Bottleneck_PConv(Bottleneck):
     def __init__(self,c1, c2, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, shortcut=True, g=1, e=0.5)
@@ -326,14 +354,37 @@ class C3x(C3):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)))
-
-
+class C3_Res2_2(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottle2neck(c_, c_,stype='stage') if _ == 0 else Bottle2neck(c_, c_) for _ in range(n)))
+class C3_ODConv(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
+class C3_CondConv(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
+class C3_Dyconv(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
 class C3TR(C3):
     # C3 module with TransformerBlock()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = TransformerBlock(c_, c_, 4, n)
+
 class C3_Bottleneck_ATT(nn.Module):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True,use_ATT=0., g=1, e=0.5, has_ATT=0):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -350,7 +401,7 @@ class C3PConv(C3):
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_PConv(c1, c2, n, shortcut, g, e) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_PConv(c1, c2, shortcut, g, e=1.0) for _ in range(n)))
 
 class C3SPP(C3):
     # C3 module with SPP()
@@ -2389,7 +2440,7 @@ class conv_bn_hswish(nn.Module):
 
 
 class MobileNet_Block(nn.Module):
-    def __init__(self, inp, oup, hidden_dim, kernel_size, stride, use_se, use_hs):
+    def __init__(self, inp, oup, hidden_dim, kernel_size, stride, use_se, use_hs=False):
         super(MobileNet_Block, self).__init__()
         assert stride in [1, 2]
 
@@ -4735,8 +4786,8 @@ class ASPPPooling(nn.Sequential):
         # 上采样
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
 if __name__ =="__main__":
-    x = torch.randn(1, 64, 20, 20)
+    x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
-    net = SKAttention(64)
+    net = Conv(64,64,3,1,custom_conv=ODConv2d)
     y = net(x)
     print(y.size())

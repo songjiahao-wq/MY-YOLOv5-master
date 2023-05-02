@@ -2297,7 +2297,7 @@ class MixConv2d(nn.Module):
     def forward(self, x):
         # 这里核原论文略有出入，这里加了一个shortcut操作
         return  self.act(self.bn(torch.cat([m(x) for m in self.m], 1)))
-
+#MixConv: Mixed Depthwise Convolutional Kernels
 class MDConv(nn.Module):
     def __init__(self, nchannels, kernel_sizes, stride):
         super(MDConv,self).__init__()
