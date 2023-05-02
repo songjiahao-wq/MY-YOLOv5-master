@@ -4676,7 +4676,74 @@ class SKSPA(nn.Module):
         out = self.ca(x)
         out = out * self.sa(out)
         return out + residual
+class ASPP(nn.Module):
+    def __init__(self, in_channels,out_channels, atrous_rates=(6, 12, 18)):
+        super(ASPP, self).__init__()
+        modules = []
+        # 1*1 卷积
+        print(atrous_rates)
+        # modules.append(nn.Sequential(
+        #     nn.Conv2d(in_channels, out_channels, 1, bias=False),
+        #     nn.BatchNorm2d(out_channels),
+        #     nn.ReLU()))
 
+        # 多尺度空洞卷积
+        rates = tuple(atrous_rates)
+        grop,i = 1, 1
+        for rate in rates:
+
+            i+=1
+            modules.append(ASPPConv(in_channels, out_channels, rate,grop))
+            grop =2**i
+
+
+        # 池化
+        modules.append(ASPPPooling(in_channels, out_channels))
+
+        self.convs = nn.ModuleList(modules)
+
+        # 拼接后的卷积
+        self.project = nn.Sequential(
+            nn.Conv2d(len(self.convs) * out_channels, out_channels, 1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            nn.Dropout(0.5))
+
+    def forward(self, x):
+        res = []
+        for conv in self.convs:
+            res.append(conv(x))
+        res = torch.cat(res, dim=1)
+        return self.project(res)
+
+
+# 空洞卷积
+class ASPPConv(nn.Sequential):
+    def __init__(self, in_channels, out_channels, dilation, grop):
+        print(grop,type(grop),'BBBBBBBBBBBBBB')
+        modules = [
+            nn.Conv2d(in_channels, out_channels, 3, padding=dilation, dilation=dilation,groups=2,bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU()
+        ]
+        super(ASPPConv, self).__init__(*modules)
+
+
+# 池化 -> 1*1 卷积 -> 上采样
+class ASPPPooling(nn.Sequential):
+    def __init__(self, in_channels, out_channels):
+        super(ASPPPooling, self).__init__(
+            nn.AdaptiveAvgPool2d(1),  # 自适应均值池化
+            nn.Conv2d(in_channels, out_channels, 1, bias=False),
+            # nn.BatchNorm2d(out_channels),
+            nn.ReLU())
+
+    def forward(self, x):
+        size = x.shape[-2:]
+        for mod in self:
+            x = mod(x)
+        # 上采样
+        return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
