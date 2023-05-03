@@ -64,12 +64,12 @@ class Concat_bifpn(nn.Module):
             w = self.w1_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
-            LOGGER.info(f'w1_weight {w}')
+            # LOGGER.info(f'w1_weight {w}')
         elif len(x) == 3:
             w = self.w2_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act (weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-            LOGGER.info(f'w2_weight {w}')
+            # LOGGER.info(f'w2_weight {w}')
         # elif len(x) == 4:
         #     w = self.w3
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
