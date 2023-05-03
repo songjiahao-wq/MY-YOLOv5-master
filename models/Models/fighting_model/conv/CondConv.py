@@ -29,7 +29,7 @@ class Attention(nn.Module):
         return self.sigmoid(att)
 
 class CondConv(nn.Module):
-    def __init__(self,in_planes,out_planes,kernel_size,stride,padding=0,dilation=1,grounps=1,bias=True,K=4,init_weight=True):
+    def __init__(self, in_planes,out_planes,kernel_size,stride,padding=0,dilation=1,grounps=1,bias=True,K=4,init_weight=True):
         super().__init__()
         self.in_planes=in_planes
         self.out_planes=out_planes

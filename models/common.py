@@ -174,13 +174,14 @@ class Bottleneck_ATT(nn.Module):
             return x + self.ATT(self.cv2(self.cv1(x))) if self.add else self.ATT(self.cv2(self.cv1(x)))
         else:
             return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
-class Bottleneck_ODConv(nn.Module):
+
+class Bottleneck_custom(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, custom_conv=None):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1, custom_conv=ODConv2d)
-        self.cv2 = Conv(c_, c2, 3, 1, g=g, custom_conv=ODConv2d)
+        self.cv1 = Conv(c1, c_, 1, 1, custom_conv=custom_conv)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g, custom_conv=custom_conv)
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
@@ -213,18 +214,7 @@ class Bottleneck_MDconv(nn.Module):
 
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
-class C3_MDConv(nn.Module):
-    # CSP Bottleneck with 3 convolutions
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c1, c_, 1, 1)
-        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
-        self.m = nn.Sequential(*(Bottleneck_MDconv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 
-    def forward(self, x):
-        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
 
 class BottleneckCSP(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -369,30 +359,41 @@ class C3_Res2_2(C3):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(Bottle2neck(c_, c_,stype='stage') if _ == 0 else Bottle2neck(c_, c_) for _ in range(n)))
+class C3_MDConv(nn.Module):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.Sequential(*(Bottleneck_MDconv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+    def forward(self, x):
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
 class C3_ODConv(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_custom(c_, c_, shortcut, g, e=1.0, custom_conv=ODConv2d) for _ in range(n)))
 class C3_CondConv(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_custom(c_, c_, shortcut, g, e=1.0, custom_conv=CondConv) for _ in range(n)))
 class C3_CoordConv(C3):
     # C3 module with 结合位置编码,卷积加上坐标，从而使其具备了空间感知能力
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(Bottleneck_CoordConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
-class C3_Dyconv(C3):
+class C3_DynamicConv(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_custom(c_, c_, shortcut, g, e=1.0, custom_conv=DynamicConv) for _ in range(n)))
 class C3TR(C3):
     # C3 module with TransformerBlock()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
