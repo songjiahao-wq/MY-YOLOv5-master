@@ -76,6 +76,7 @@ class Attention(nn.Module):
         return kernel_attention
 
     def forward(self, x):
+        b,c,h,w = x.size()
         x = self.avgpool(x)
         x = self.fc(x)
         x = self.bn(x)
