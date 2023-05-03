@@ -185,6 +185,17 @@ class Bottleneck_ODConv(nn.Module):
 
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+class Bottleneck_CoordConv(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = CoordConv(c1, c_, 1, 1)
+        self.cv2 = CoordConv(c_, c2, 3, 1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 class Bottleneck_PConv(Bottleneck):
     def __init__(self,c1, c2, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, shortcut=True, g=1, e=0.5)
@@ -363,19 +374,25 @@ class C3_ODConv(C3):
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 class C3_CondConv(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+class C3_CoordConv(C3):
+    # C3 module with 结合位置编码,卷积加上坐标，从而使其具备了空间感知能力
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_CoordConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 class C3_Dyconv(C3):
     # C3 module with cross-convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c2, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*(Bottleneck_ODConv(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 class C3TR(C3):
     # C3 module with TransformerBlock()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
@@ -2850,7 +2867,7 @@ class AddCoords(nn.Module):
         Args:
             input_tensor: shape(batch, channel, x_dim, y_dim)
         """
-        batch_size, _, x_dim, y_dim = input_tensor.size()
+        batch_size, _, x_dim, y_dim = input_tensor.shape
 
         xx_channel = torch.arange(x_dim).repeat(1, y_dim, 1)
         yy_channel = torch.arange(y_dim).repeat(1, x_dim, 1).transpose(1, 2)
@@ -2889,7 +2906,7 @@ class CoordConv(nn.Module):
     def forward(self, x):
         x = self.addcoords(x)
         x = self.conv(x)
-        return
+        return x
 #DSCpnv***************************************
 class C3_DSConv(C3):
     # C3 module with dsconv
@@ -2906,6 +2923,7 @@ class C3_SAC(C3):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(Bottleneck_SAC(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+
 #******************************************
 def conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups=1):
     '''Basic cell for rep-style block, including conv and bn'''
@@ -4144,7 +4162,7 @@ class PSA_sConv(nn.Module):
                                   nn.ReLU())
     def forward(self, x):
         batch_size,H,W = x.shape[0],x.shape[2],x.shape[3]
-        x1,x2,x3,x4 = torch.split(x,(self.dimplanes,self.dimplanes,self.dimplanes,self.dimplanes),dim=1)
+        x1, x2, x3, x4 = torch.split(x,(self.dimplanes,self.dimplanes,self.dimplanes,self.dimplanes),dim=1)
 
         feats = torch.cat((x1, x2, x3, x4), dim=1)
         feats = feats.view(batch_size, 4, self.split_channel, feats.shape[2], feats.shape[3])
@@ -4421,7 +4439,7 @@ class DeformCAConv(nn.Module):
         out = self.silu(out)
 
         return out
-from torchvision.ops import deform_conv2d
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -4764,16 +4782,25 @@ class ASPP(nn.Module):
         res = []
         for conv in self.convs:
             res.append(conv(x))
+
         res = torch.cat(res, dim=1)
-        return self.project(res)
+
+        batchsize, channels, height, width = res.size()
+        groups = 4
+        channels_per_group = int(channels / groups)
+
+        x = res.view(batchsize, groups, channels_per_group, height, width)
+        x = x.transpose(1, 2).contiguous()
+        res_shuffled = x.view(batchsize, -1, height, width)
+        return self.project(res_shuffled)
 
 
 # 空洞卷积
 class ASPPConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, dilation, grop):
-        print(grop,type(grop),'BBBBBBBBBBBBBB')
+        # print(grop,type(grop),'BBBBBBBBBBBBBB')
         modules = [
-            nn.Conv2d(in_channels, out_channels, 3, padding=dilation, dilation=dilation,groups=2,bias=False),
+            nn.Conv2d(in_channels, out_channels, 3, padding=dilation, dilation=dilation, groups=in_channels,bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         ]
