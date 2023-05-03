@@ -10,6 +10,10 @@ models/yolo_Backbone.py：yolo的Backbone版本
 models/yolov5-custom.yaml：自定义的骨干网络yaml
 train_custom.py：训练自定义骨干网
 ```
+冻结训练：添加从后向前冻结训练
+```bash
+python train.py --Freeze -3#冻结后三层
+```
 待更新：（轻量化网络名字）
 </details>
 
