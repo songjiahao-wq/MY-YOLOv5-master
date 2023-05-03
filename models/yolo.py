@@ -433,7 +433,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/1500/yolov5-Ghostv2-2-ATT-connect.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-ODConv.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true',default=True, help='profile model speed')
