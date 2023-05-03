@@ -44,6 +44,21 @@ class Conv(nn.Module):
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
+class SwishImplementation(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, i):
+        result = i * torch.sigmoid(i)
+        ctx.save_for_backward(i)
+        return result
+    @staticmethod
+    def backward(ctx, grad_output):
+        i = ctx.saved_variables[0]
+        sigmoid_i = torch.sigmoid(i)
+        return grad_output * (sigmoid_i * (1 + i * (1 - sigmoid_i)))
+
+class MemoryEfficientSwish(nn.Module):
+    def forward(self, x):
+        return SwishImplementation.apply(x)
 
 class Concat_bifpn(nn.Module):
     # Concatenate a list of tensors along dimension
@@ -54,13 +69,12 @@ class Concat_bifpn(nn.Module):
        # self.w3 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
         self.epsilon = 0.0001
         self.conv = Conv(c1, c2, 1 ,1 ,0 )
-
-        self.act= nn.ReLU()
-
+        # self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
+        # self.act= nn.ReLU()
+        self.act = MemoryEfficientSwish()
     def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat
         # print("bifpn:",x.shape)
         if len(x) == 2:
-
             w = self.w1_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
@@ -68,10 +82,87 @@ class Concat_bifpn(nn.Module):
         elif len(x) == 3:
             w = self.w2_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
-            x = self.conv(self.act (weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
+            x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
             # LOGGER.info(f'w2_weight {w}')
         # elif len(x) == 4:
         #     w = self.w3
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
         #     x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] *x[2] + weight[3]*x[3] ))
         return x
+
+#集中金字塔结构https://zhuanlan.zhihu.com/p/626308529?utm_campaign=shareopn&utm_medium=social&utm_oi=1141045576027246592&utm_psn=1637085972838903808&utm_source=wechat_session
+class LightweightMLP(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, scale_factor=1.0):
+        super(LightweightMLP, self).__init__()
+
+        # Global average pooling
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Channel scaling layer
+        self.channel_scale = nn.Conv2d(in_channels, int(in_channels * scale_factor), 1)
+
+        # MLP with one hidden layer
+        self.fc1 = nn.Linear(int(in_channels * scale_factor), hidden_channels)
+        self.activation = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x):
+        # Apply global average pooling
+        redual = x
+        x = self.global_avg_pool(x)
+
+        # Apply channel scaling
+        x = self.channel_scale(x)
+
+        x = x.view(x.size(0), -1)
+
+        # Apply MLP
+        x = self.fc1(x)
+        x = self.activation(x)
+        x = self.fc2(x)
+        x = x.view(x.size(0), -1, 1, 1)  # Reshape x to match input feature map dimensions
+        x = x * redual  # Add the input feature map to the enhanced feature map
+        return x
+#model = LightweightMLP(in_channels, out_channels, hidden_channels, scale_factor)
+#聚合局部特征的
+class LocalFeatureAggregator(nn.Module):
+    def __init__(self, in_channels, out_channels, dilation_rates=(1, 2, 4)):
+        super(LocalFeatureAggregator, self).__init__()
+
+        self.branches = nn.ModuleList()
+
+        # Create branches with different dilation rates
+        for rate in dilation_rates:
+            branch = nn.Sequential(
+                # Depthwise convolution
+                nn.Conv2d(in_channels, in_channels, 3, padding=rate, dilation=rate, groups=in_channels, bias=False),
+                nn.BatchNorm2d(in_channels),
+                nn.ReLU(),
+                # Pointwise convolution
+                nn.Conv2d(in_channels, out_channels, 1, bias=False),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU()
+            )
+            self.branches.append(branch)
+        self.conv = nn.Sequential(
+            nn.Conv2d(len(dilation_rates) * out_channels, out_channels, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU()
+        )
+    def forward(self, x):
+        aggregated_features = []
+
+        # Process input through each branch
+        for branch in self.branches:
+            aggregated_features.append(branch(x))
+
+        # Concatenate the output of all branches along the channel dimension
+        output = torch.cat(aggregated_features, dim=1)
+        output = self.conv(output)
+        return output
+if __name__ =="__main__":
+    x = torch.randn(2, 64, 20, 20)
+    b, c, h, w = x.shape
+    net = LocalFeatureAggregator(64,64)
+    y = net(x)
+    print(y.size())

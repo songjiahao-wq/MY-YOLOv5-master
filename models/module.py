@@ -10,6 +10,8 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
                 SCConv,Bottleneck_DCN, FusionModel
+from models.Models.research import LocalFeatureAggregator, LightweightMLP
+
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
 from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
 from models.Models.fighting_model.backbone.Ghostnetv2 import ghostnetv2_model
