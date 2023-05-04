@@ -89,6 +89,32 @@ class Concat_bifpn(nn.Module):
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
         #     x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] *x[2] + weight[3]*x[3] ))
         return x
+class Concat_bifpn_cat(nn.Module):
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.w1_weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.w2_weight = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.epsilon = 0.0001
+        self.conv = Conv(c1 * 2, c2 , 1, 1, 0)
+        self.conv3 = Conv(c1 * 3, c2 , 1, 1, 0)
+        self.act = MemoryEfficientSwish()
+    def forward(self, x):
+        if len(x) == 2:
+            w = self.w1_weight
+            weight = w / (torch.sum(w, dim=0) + self.epsilon)
+            x1 = weight[0] * x[0]
+            x2 = weight[1] * x[1]
+            x_cat = torch.cat((x1, x2), dim=1)
+            x = self.conv(self.act(x_cat))
+        elif len(x) == 3:
+            w = self.w2_weight
+            weight = w / (torch.sum(w, dim=0) + self.epsilon)
+            x1 = weight[0] * x[0]
+            x2 = weight[1] * x[1]
+            x3 = weight[2] * x[2]
+            x_cat = torch.cat((x1, x2, x3), dim=1)
+            x = self.conv3(self.act(x_cat))
+        return x
 
 #集中金字塔结构https://zhuanlan.zhihu.com/p/626308529?utm_campaign=shareopn&utm_medium=social&utm_oi=1141045576027246592&utm_psn=1637085972838903808&utm_source=wechat_session
 class LightweightMLP(nn.Module):

@@ -39,6 +39,7 @@ import yaml
 from utils import TryExcept, emojis
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
+from utils.metrics import bbox_iou
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -849,6 +850,168 @@ def clip_segments(boxes, shape):
         boxes[:, 1] = boxes[:, 1].clip(0, shape[0])  # y
 
 
+def box_iou_for_nms(box1, box2, GIoU=False, DIoU=False, CIoU=False, SIoU=False, EIou=False, eps=1e-7):
+    # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
+
+    b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+    b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+    w1, h1 = b1_x2 - b1_x1, (b1_y2 - b1_y1).clamp(eps)
+    w2, h2 = b2_x2 - b2_x1, (b2_y2 - b2_y1).clamp(eps)
+
+    # Intersection area
+    inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp(0) * \
+            (b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)).clamp(0)
+
+    # Union Area
+    union = w1 * h1 + w2 * h2 - inter + eps
+
+    # IoU
+    iou = inter / union
+    if CIoU or DIoU or GIoU or EIou:
+        cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
+        ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
+        if CIoU or DIoU or EIou:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+            c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
+            rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
+            if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
+                v = (4 / math.pi ** 2) * (torch.atan(w2 / h2) - torch.atan(w1 / h1)).pow(2)
+                with torch.no_grad():
+                    alpha = v / (v - iou + (1 + eps))
+                return iou - (rho2 / c2 + v * alpha)  # CIoU
+            elif EIou:
+                rho_w2 = ((b2_x2 - b2_x1) - (b1_x2 - b1_x1)) ** 2
+                rho_h2 = ((b2_y2 - b2_y1) - (b1_y2 - b1_y1)) ** 2
+                cw2 = cw ** 2 + eps
+                ch2 = ch ** 2 + eps
+                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
+            return iou - rho2 / c2  # DIoU
+        c_area = cw * ch + eps  # convex area
+        return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
+    elif SIoU:
+        cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
+        ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
+        # SIoU Loss https://arxiv.org/pdf/2205.12740.pdf
+        s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
+        s_ch = (b2_y1 + b2_y2 - b1_y1 - b1_y2) * 0.5 + eps
+        sigma = torch.pow(s_cw ** 2 + s_ch ** 2, 0.5)
+        sin_alpha_1 = torch.abs(s_cw) / sigma
+        sin_alpha_2 = torch.abs(s_ch) / sigma
+        threshold = pow(2, 0.5) / 2
+        sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+        angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - math.pi / 2)
+        rho_x = (s_cw / cw) ** 2
+        rho_y = (s_ch / ch) ** 2
+        gamma = angle_cost - 2
+        distance_cost = 2 - torch.exp(gamma * rho_x) - torch.exp(gamma * rho_y)
+        omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
+        omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
+        shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
+        return iou - 0.5 * (distance_cost + shape_cost)
+    return iou  # IoU
+
+
+def soft_nms2(bboxes, scores, iou_thresh=0.5, sigma=0.5, score_threshold=0.25):
+    order = torch.arange(0, scores.size(0)).to(bboxes.device)
+    keep = []
+
+    while order.numel() > 1:
+        if order.numel() == 1:
+            keep.append(order[0])
+            break
+        else:
+            i = order[0]
+            keep.append(i)
+
+        iou = box_iou_for_nms(bboxes[i], bboxes[order[1:]]).squeeze()
+
+        idx = (iou > iou_thresh).nonzero().squeeze()
+        if idx.numel() > 0:
+            iou = iou[idx]
+            newScores = torch.exp(-torch.pow(iou, 2) / sigma)
+            scores[order[idx + 1]] *= newScores
+
+        newOrder = (scores[order[1:]] > score_threshold).nonzero().squeeze()
+        if newOrder.numel() == 0:
+            break
+        else:
+            maxScoreIndex = torch.argmax(scores[order[newOrder + 1]])
+            if maxScoreIndex != 0:
+                newOrder[[0, maxScoreIndex],] = newOrder[[maxScoreIndex, 0],]
+            order = order[newOrder + 1]
+
+    return torch.LongTensor(keep)
+def soft_nms(prediction, conf_thres=0.25, iou_thres=0.45, multi_label=False):
+    """Runs Non-Maximum Suppression (NMS) on inference results
+
+    Returns:
+         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+    """
+
+    nc = prediction.shape[2] - 5  # number of classes
+
+    # Checks
+    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
+    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+
+    # Settings
+    min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
+    time_limit = 10.0  # seconds to quit after
+
+    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
+    soft_nms = True
+
+    t = time.time()
+    output = [torch.zeros((0, 6), device=prediction.device)] * prediction.shape[0]
+    for xi, x in enumerate(prediction):  # image index, image inference
+        x = x[x[:, 4] > conf_thres]  # confidence
+        x = x[(x[:, 2:4] > min_wh).all(1) & (x[:, 2:4] < max_wh).all(1)]
+        if len(x) == 0:
+            continue
+        # Compute conf
+        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        # Box (center x, center y, width, height) to (x1, y1, x2, y2)
+        box = xywh2xyxy(x[:, :4])
+        # Detections matrix nx6 (xyxy, conf, cls)
+        if multi_label:
+            i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            x = torch.cat((box[i], x[i, j + 5].unsqueeze(1), j.float().unsqueeze(1)), 1)
+        else:  # best class only
+            conf, j = x[:, 5:].max(1)
+            x = torch.cat((box, conf.unsqueeze(1), j.float().unsqueeze(1)), 1)[conf.view(-1) > conf_thres]
+        if len(x) == 0:
+            continue
+        x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
+        # Batched NMS
+        det_max = []
+        cls = x[:, -1]   # classes
+        for c in cls.unique():
+            dc = x[cls == c]
+            n = len(dc)
+            #print(n)
+            if n == 1:
+                det_max.append(dc)
+                continue
+            elif n > 30000:
+                dc = dc[:30000]
+            if soft_nms:
+                sigma = 0.5
+                while len(dc):
+                    det_max.append(dc[:1])
+                    if len(dc) == 1:
+                        break
+                    iou = bbox_iou(dc[0], dc[1:],CIoU=True)
+                    dc = dc[1:]
+                    dc[:, 4] *= torch.exp(-iou ** 2 / sigma)
+                    dc = dc[dc[:, 4] > conf_thres]
+        if len(det_max):
+            det_max = torch.cat(det_max)
+            #output[xi] = det_max[(-det_max[:, 4]).argsort()]
+            output[xi] = det_max[(-det_max[:, 4]).argsort()]
+        if (time.time() - t) > time_limit:
+            print(f'WARNING: NMS time limit {time_limit}s exceeded')
+            break  # time limit exceeded
+    return output
+
 def non_max_suppression(
         prediction,
         conf_thres=0.25,
@@ -947,6 +1110,9 @@ def non_max_suppression(
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        # i = NMS(boxes, scores, iou_thres, class_nms='CIoU')  # NMS
+        # i = soft_nms(boxes, scores, iou_thres)  # NMS
+        # i = soft_nms2(boxes, scores, iou_thres)  # NMS
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
@@ -965,7 +1131,29 @@ def non_max_suppression(
             break  # time limit exceeded
 
     return output
-
+def NMS(boxes, scores, iou_thres, class_nms='CIoU'):
+    # class_nms=class_nms
+    GIoU=CIoU=DIoU=EIoU=SIoU=False
+    if class_nms == 'CIoU':
+        CIoU=True
+    elif class_nms == 'DIoU':
+        DIoU=True
+    elif class_nms == 'GIoU':
+        GIoU=True
+    elif class_nms == 'EIoU':
+        EIoU=True
+    else :
+        SIoU=True
+    B = torch.argsort(scores, dim=-1, descending=True)
+    keep = []
+    while B.numel() > 0:
+        index = B[0]
+        keep.append(index)
+        if B.numel() == 1: break
+        iou = bbox_iou(boxes[index, :], boxes[B[1:], :], GIoU=GIoU, DIoU=DIoU, CIoU=CIoU, EIoU=EIoU, SIoU=SIoU)
+        inds = torch.nonzero(iou <= iou_thres).reshape(-1)
+        B = B[inds + 1]
+    return torch.tensor(keep)
 
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()
     # Strip optimizer from 'f' to finalize training, optionally save as 's'
