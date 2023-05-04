@@ -1039,7 +1039,7 @@ def non_max_suppression(
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         # i = NMS(boxes, scores, iou_thres, class_nms='CIoU')  # NMS
-        i = soft_nms2(boxes, scores, iou_thres)  # NMS
+        # i = soft_nms2(boxes, scores, iou_thres)  # NMS
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
