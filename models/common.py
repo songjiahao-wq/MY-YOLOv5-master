@@ -4830,6 +4830,30 @@ class ASPPPooling(nn.Sequential):
             x = mod(x)
         # 上采样
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+
+#PP LCNet百度团队针对Intel-CPU端加速而设计的高推理速度&高性能的LCNet
+class DepthSepConv(nn.Module):
+    def __init__(self, inp, oup, dw_size, stride, use_se):
+        super(DepthSepConv, self).__init__()
+        self.stride = stride
+        self.inp = inp
+        self.oup = oup
+        self.dw_size = dw_size
+        self.dw_sp = nn.Sequential(
+            nn.Conv2d(self.inp, self.inp, kernel_size=self.dw_size, stride=self.stride, padding=(dw_size - 1) // 2,
+                      groups=self.inp, bias=False),
+            nn.BatchNorm2d(self.inp),
+
+            SeBlock(self.inp, reduction=16) if use_se else nn.Sequential(),
+
+            nn.Conv2d(self.inp, self.oup, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(self.oup),
+            nn.Hardswish())
+
+    def forward(self, x):
+        y = self.dw_sp(x)
+        return y
+
 if __name__ =="__main__":
     x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
