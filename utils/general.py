@@ -965,7 +965,7 @@ def soft_nms2(bboxes, scores, iou_thresh=0.5, sigma=0.5, score_threshold=0.25):
             i = order[0]
             keep.append(i)
 
-        iou = box_iou_for_nms(bboxes[i], bboxes[order[1:]]).squeeze()
+        iou = box_iou_for_nms(bboxes[i], bboxes[order[1:]], CIoU=True).squeeze()
 
         idx = (iou > iou_thresh).nonzero().squeeze()
         if idx.numel() > 0:
@@ -983,77 +983,6 @@ def soft_nms2(bboxes, scores, iou_thresh=0.5, sigma=0.5, score_threshold=0.25):
             order = order[newOrder + 1]
 
     return torch.LongTensor(keep)
-def soft_nms(prediction, conf_thres=0.25, iou_thres=0.45, multi_label=False):
-    """Runs Non-Maximum Suppression (NMS) on inference results
-
-    Returns:
-         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
-    """
-
-    nc = prediction.shape[2] - 5  # number of classes
-
-    # Checks
-    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
-    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
-
-    # Settings
-    min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
-    time_limit = 10.0  # seconds to quit after
-
-    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
-    soft_nms = True
-
-    t = time.time()
-    output = [torch.zeros((0, 6), device=prediction.device)] * prediction.shape[0]
-    for xi, x in enumerate(prediction):  # image index, image inference
-        x = x[x[:, 4] > conf_thres]  # confidence
-        x = x[(x[:, 2:4] > min_wh).all(1) & (x[:, 2:4] < max_wh).all(1)]
-        if len(x) == 0:
-            continue
-        # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
-        # Box (center x, center y, width, height) to (x1, y1, x2, y2)
-        box = xywh2xyxy(x[:, :4])
-        # Detections matrix nx6 (xyxy, conf, cls)
-        if multi_label:
-            i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, j + 5].unsqueeze(1), j.float().unsqueeze(1)), 1)
-        else:  # best class only
-            conf, j = x[:, 5:].max(1)
-            x = torch.cat((box, conf.unsqueeze(1), j.float().unsqueeze(1)), 1)[conf.view(-1) > conf_thres]
-        if len(x) == 0:
-            continue
-        x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
-        # Batched NMS
-        det_max = []
-        cls = x[:, -1]   # classes
-        for c in cls.unique():
-            dc = x[cls == c]
-            n = len(dc)
-            #print(n)
-            if n == 1:
-                det_max.append(dc)
-                continue
-            elif n > 30000:
-                dc = dc[:30000]
-            if soft_nms:
-                sigma = 0.5
-                while len(dc):
-                    det_max.append(dc[:1])
-                    if len(dc) == 1:
-                        break
-                    iou = bbox_iou(dc[0], dc[1:],CIoU=True)
-                    dc = dc[1:]
-                    dc[:, 4] *= torch.exp(-iou ** 2 / sigma)
-                    dc = dc[dc[:, 4] > conf_thres]
-        if len(det_max):
-            det_max = torch.cat(det_max)
-            #output[xi] = det_max[(-det_max[:, 4]).argsort()]
-            output[xi] = det_max[(-det_max[:, 4]).argsort()]
-        if (time.time() - t) > time_limit:
-            print(f'WARNING: NMS time limit {time_limit}s exceeded')
-            break  # time limit exceeded
-    return output
 
 def non_max_suppression(
         prediction,
