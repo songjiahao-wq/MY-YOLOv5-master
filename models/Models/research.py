@@ -68,7 +68,7 @@ class Concat_bifpn(nn.Module):
         self.w2_weight = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
        # self.w3 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
         self.epsilon = 0.0001
-        self.conv = Conv(c1, c2, 1 ,1 ,0 )
+        self.conv = Conv(c1, c2, 1 , 1 , 0 )
         # self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
         # self.act= nn.ReLU()
         self.act = MemoryEfficientSwish()
@@ -115,6 +115,7 @@ class Concat_bifpn_cat(nn.Module):
             x_cat = torch.cat((x1, x2, x3), dim=1)
             x = self.conv3(self.act(x_cat))
         return x
+
 
 #集中金字塔结构https://zhuanlan.zhihu.com/p/626308529?utm_campaign=shareopn&utm_medium=social&utm_oi=1141045576027246592&utm_psn=1637085972838903808&utm_source=wechat_session
 class LightweightMLP(nn.Module):

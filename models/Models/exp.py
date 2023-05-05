@@ -96,46 +96,5 @@ class Concat_bifpn_cat(nn.Module):
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.act(torch.cat(weight[0] * x[0] , weight[1] * x[1] , weight[2] * x[2]),dim=1)
         return x
-import torch
-import torch.nn as nn
 
-class ChannelAttention(nn.Module):
-    def __init__(self, in_channels, reduction_ratio=16):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-
-        self.fc1 = nn.Conv2d(in_channels, in_channels // reduction_ratio, 1, bias=False)
-        self.relu1 = nn.ReLU()
-        self.fc2 = nn.Conv2d(in_channels // reduction_ratio, in_channels, 1, bias=False)
-
-    def forward(self, x):
-        avg_out = self.avg_pool(x)
-        avg_out = self.fc2(self.relu1(self.fc1(avg_out)))
-
-        max_out = self.max_pool(x)
-        max_out = self.fc2(self.relu1(self.fc1(max_out)))
-
-        out = torch.sigmoid(avg_out + max_out)
-        return out
-
-class Concat_bifpn(nn.Module):
-    def __init__(self, c1, c2):
-        super(Concat_bifpn, self).__init__()
-        self.epsilon = 0.0001
-        self.conv = Conv(c1, c2, 1, 1, 0)
-        self.channel_attention = ChannelAttention(c1)
-        self.act = nn.ReLU()
-
-    def forward(self, x):
-        if len(x) == 2:
-            attention_weights = self.channel_attention(torch.cat(x, dim=1))
-            weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
-            x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
-        elif len(x) == 3:
-            attention_weights = self.channel_attention(torch.cat(x, dim=1))
-            weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
-            x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-
-        return x
 
