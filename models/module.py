@@ -10,7 +10,7 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
                 SCConv,Bottleneck_DCN, FusionModel
-from models.Models.research import LocalFeatureAggregator, LightweightMLP
+from models.Models.research import LocalFeatureAggregator, LightweightMLP, Concat_bifpn, Concat_bifpn_cat
 
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
 from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
@@ -21,7 +21,7 @@ from models.Models.fighting_model.backbone.Res2net import Bottle2neck
 from models.Models.Attention.SPPA_CBAM import SPPA_CBAM
 from models.Models.Attention.SPPAF import C3SPPAF
 from models.Models.Litemodel import ADD
-from models.Models.research import Concat_bifpn
+
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual
 
 from models.Models.Attention.SoftThresholdAttention import *
