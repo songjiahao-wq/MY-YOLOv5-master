@@ -54,16 +54,46 @@ class Detect(nn.Module):
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
+    # def forward(self, x):
+    #     z = []  # inference output
+    #     for i in range(self.nl):
+    #         x[i] = self.m[i](x[i])  # conv
+    #         bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+    #         x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+    #         # self.training=True
+    #         if not self.training:  # inference
+    #             if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
+    #                 self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
+    #
+    #             if isinstance(self, Segment):  # (boxes + masks)
+    #                 xy, wh, conf, mask = x[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
+    #                 xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
+    #                 wh = (wh.sigmoid() * 2) ** 2 * self.anchor_grid[i]  # wh
+    #                 y = torch.cat((xy, wh, conf.sigmoid(), mask), 4)
+    #             else:  # Detect (boxes only)
+    #                 xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
+    #                 xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
+    #                 wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
+    #                 y = torch.cat((xy, wh, conf), 4)
+    #             z.append(y.view(bs, self.na * nx * ny, self.no))
+    #
+    #     return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
     def forward(self, x):
         z = []  # inference output
+
+        logits_ = []               # 修改---1
+
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-            # self.training=True
+
             if not self.training:  # inference
                 if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
+
+                logits = x[i][..., 5:]                 # 修改---2
+
 
                 if isinstance(self, Segment):  # (boxes + masks)
                     xy, wh, conf, mask = x[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
@@ -77,8 +107,10 @@ class Detect(nn.Module):
                     y = torch.cat((xy, wh, conf), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no))
 
-        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
+                logits_.append(logits.view(bs, -1, self.no - 5))     # 修改---3
 
+        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
+        # return x if self.training else (torch.cat(z, 1), torch.cat(logits_, 1), x)  # 修改---4
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype

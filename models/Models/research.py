@@ -89,7 +89,7 @@ class Concat_bifpn(nn.Module):
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
         #     x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] *x[2] + weight[3]*x[3] ))
         return x
-class Concat_bifpn_cat(nn.Module):
+class Concat_bifpn(nn.Module):
     def __init__(self, c1, c2):
         super().__init__()
         self.w1_weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
@@ -115,49 +115,7 @@ class Concat_bifpn_cat(nn.Module):
             x_cat = torch.cat((x1, x2, x3), dim=1)
             x = self.conv3(self.act(x_cat))
         return x
-class ChannelAttention(nn.Module):
-    def __init__(self, in_channels, reduction_ratio=16):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
 
-        self.fc1 = nn.Conv2d(in_channels, in_channels // reduction_ratio, 1, bias=False)
-        self.relu1 = nn.ReLU()
-        self.fc2 = nn.Conv2d(in_channels // reduction_ratio, in_channels, 1, bias=False)
-
-    def forward(self, x):
-        avg_out = self.avg_pool(x)
-        avg_out = self.fc2(self.relu1(self.fc1(avg_out)))
-
-        max_out = self.max_pool(x)
-        max_out = self.fc2(self.relu1(self.fc1(max_out)))
-
-        out = torch.sigmoid(avg_out + max_out)
-        return out
-
-class Concat_bifpn2(nn.Module):
-    def __init__(self, c1, c2):
-        super(Concat_bifpn2, self).__init__()
-        self.epsilon = 0.0001
-        self.conv = Conv(c1, c2, 1, 1, 0)
-        self.channel_attention2 = ChannelAttention(2*c1)
-        self.channel_attention3 = ChannelAttention(3*c1)
-        self.act = nn.ReLU()
-        self.conv2 = nn.Conv2d(2*c1, c1, 1)
-        self.conv3 = nn.Conv2d(3*c1, c1, 1)
-        self.c1 = c1
-    def forward(self, x):
-        if len(x) == 2:
-            attention_weights = self.channel_attention2(torch.cat(x, dim=1))
-            weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
-            weight = list(weight.split((self.c1, self.c1),dim=1))
-            x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
-        elif len(x) == 3:
-            attention_weights = self.channel_attention3(torch.cat(x, dim=1))
-            weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
-            weight = list(weight.split((self.c1, self.c1, self.c1),dim=1))
-            x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-        return x
 
 #集中金字塔结构https://zhuanlan.zhihu.com/p/626308529?utm_campaign=shareopn&utm_medium=social&utm_oi=1141045576027246592&utm_psn=1637085972838903808&utm_source=wechat_session
 class LightweightMLP(nn.Module):
