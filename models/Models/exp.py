@@ -96,8 +96,6 @@ class Concat_bifpn_cat(nn.Module):
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.act(torch.cat(weight[0] * x[0] , weight[1] * x[1] , weight[2] * x[2]),dim=1)
         return x
-import torch
-import torch.nn as nn
 
 class ChannelAttention(nn.Module):
     def __init__(self, in_channels, reduction_ratio=16):
@@ -124,18 +122,18 @@ class Concat_bifpn(nn.Module):
         super(Concat_bifpn, self).__init__()
         self.epsilon = 0.0001
         self.conv = Conv(c1, c2, 1, 1, 0)
-        self.channel_attention = ChannelAttention(c1)
+        self.channel_attention2 = ChannelAttention(2*c1)
+        self.channel_attention3 = ChannelAttention(3*c1)
         self.act = nn.ReLU()
 
     def forward(self, x):
         if len(x) == 2:
-            attention_weights = self.channel_attention(torch.cat(x, dim=1))
+            attention_weights = self.channel_attention2(torch.cat(x, dim=1))
             weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
         elif len(x) == 3:
-            attention_weights = self.channel_attention(torch.cat(x, dim=1))
+            attention_weights = self.channel_attention2(torch.cat(x, dim=1))
             weight = attention_weights / (torch.sum(attention_weights, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-
         return x
 
