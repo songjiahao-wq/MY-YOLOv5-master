@@ -89,7 +89,7 @@ class Concat_bifpn(nn.Module):
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
         #     x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] *x[2] + weight[3]*x[3] ))
         return x
-class Concat_bifpn(nn.Module):
+class Concat_bifpn_cat(nn.Module):
     def __init__(self, c1, c2):
         super().__init__()
         self.w1_weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
