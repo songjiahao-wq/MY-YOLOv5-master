@@ -19,22 +19,23 @@ names = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', '
          'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
          'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
          'hair drier', 'toothbrush']  # class names
-# names = ['person']  # class names
+names = ['car', 'bus', 'bicycle', 'person','motorbike']  # class names
+
 # yolov5s网络中的三个detect层
-target_layers = ['model_17_cv3_act', 'model_20_cv3_act', 'model_23_cv3_act']
+target_layers = ['model_15_cv3_act', 'model_18_cv3_act', 'model_21_cv3_act']
 
 # Arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--model-path', type=str, default="weights/yolov5s.pt", help='Path to the model')
-parser.add_argument('--img-path', type=str, default='data/images/bus.jpg', help='input image path')
-parser.add_argument('--output-dir', type=str, default='runs/result17', help='output dir')
+parser.add_argument('--model-path', type=str, default="runs/train/yolov5lShffulev2/weights/best.pt", help='Path to the model')
+parser.add_argument('--img-path', type=str, default='gram_img', help='input image path')
+parser.add_argument('--output-dir', type=str, default='runs/yolov5lShffulev2/', help='output dir')
 parser.add_argument('--img-size', type=int, default=640, help="input image size")
-parser.add_argument('--target-layer', type=str, default='model_20_cv3_act',
+parser.add_argument('--target-layer', type=str, default='model_21_cv3_act',
                     help='The layer hierarchical address to which gradcam will applied,'
                          ' the names should be separated by underline')
 parser.add_argument('--method', type=str, default='gradcam', help='gradcam method')
 parser.add_argument('--device', type=str, default='cuda', help='cuda or cpu')
-parser.add_argument('--no_text_box', action='store_true',
+parser.add_argument('--no_text_box', default=True,action='store_true',
                     help='do not show label and box on the heatmap')
 args = parser.parse_args()
 
@@ -60,7 +61,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
     color = color or [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
-    cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+    # cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
     if label:
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
@@ -69,9 +70,9 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
         outsize_right = c2[0] - img.shape[:2][1] > 0  # label fits outside box right
         c1 = c1[0] - (c2[0] - img.shape[:2][1]) if outsize_right else c1[0], c1[1]
         c2 = c2[0] - (c2[0] - img.shape[:2][1]) if outsize_right else c2[0], c2[1]
-        cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
-        cv2.putText(img, label, (c1[0], c1[1] - 2 if outside else c2[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf,
-                    lineType=cv2.LINE_AA)
+        # cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
+        # cv2.putText(img, label, (c1[0], c1[1] - 2 if outside else c2[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf,
+        #             lineType=cv2.LINE_AA)
     return img
 
 
