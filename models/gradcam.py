@@ -70,13 +70,14 @@ class YOLOV5GradCAM:
             b, k, u, v = gradients.size()
             alpha = gradients.view(b, k, -1).mean(2)
             weights = alpha.view(b, k, 1, 1)
-            b, c1,_,_ = weights.shape
-            b,c2,_,_ = activations.shape
-            # conv1x1 = nn.Conv2d(c2, c1, 1)
-            # conv1x1 = conv1x1.to(activations.device)  # Move conv1x1 to the same device as activations
-            # activations = conv1x1(activations)
-            for i in range(4):
-                weights = torch.cat((weights, weights), 1)
+            b, c1, _, _ = weights.shape
+            b, c2, _, _ = activations.shape
+            conv1x1 = nn.Conv2d(c1, c2, 1)
+            conv1x1 = conv1x1.to(weights.device)  # Move conv1x1 to the same device as activations
+            weights = conv1x1(weights)
+            # if c1 != c2:
+            #     for i in range(4):
+            #         weights = torch.cat((weights, weights), 1)
             # i += 1
             saliency_map = (weights * activations).sum(1, keepdim=True)
             saliency_map = F.relu(saliency_map)
