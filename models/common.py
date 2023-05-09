@@ -4341,7 +4341,7 @@ class NonCAConv(nn.Module):
 
 class SKConv(nn.Module):
 
-    def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1,3,5,7],reduction=32,group=16,L=32):
+    def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1, 3, 5, 7], reduction=32, group=16, L=32):
         super().__init__()
         inp =channel
         group = channel
