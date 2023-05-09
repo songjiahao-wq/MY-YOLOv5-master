@@ -455,9 +455,69 @@ class SpectralAttention(nn.Module):
 
         return x_weighted
 
+class ECAAttention(nn.Module):
+
+    def __init__(self, c1, c2, kernel_size=3):
+        super().__init__()
+        channel = c1
+        kernels = 3
+        self.d=max(32, channel//32)
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=kernel_size, padding=(kernel_size - 1) // 2)
+        self.sigmoid = nn.Sigmoid()
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 = nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 = nn.AdaptiveAvgPool2d(4)
+        self.fc = nn.Linear(channel * 21, self.d)
+        self.fcs = nn.ModuleList([])
+        for i in range(3):
+            self.fcs.append(nn.Linear(self.d, channel))
+        self.conv2 = nn.Conv2d(c1*3, c1, kernel_size=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(c1, c2, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  # nn.BatchNorm2d(c2),
+                                  nn.ReLU())
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        bs, c, _, _ = x.size()
+        y1 = self.avg_pool1(x).reshape((bs, -1)) #
+        y2 = self.avg_pool2(x).reshape((bs, -1))
+        y3 = self.avg_pool4(x).reshape((bs, -1))
+        S = torch.cat((y1, y2, y3), 1)
+        ### reduction channel
+        # S=U.mean(-1).mean(-1) #bs,c
+        Z = self.fc(S)  # bs,d
+        weights = []
+        for fc in self.fcs:
+            weight = fc(Z) # bs,c
+            weights.append(weight.view(bs, c, 1, 1))  # bs,c,1,1
+        attention_weughts = torch.cat(weights,dim=1)  # k,bs,channel,1,1
+        y2 = self.gap(x)  # bs,c,1,1
+        y = self.conv2(attention_weughts)
+        #squeeze() 函数用于删除张量中尺寸为 1 的维度
+        y = y.squeeze(-1).permute(0, 2, 1)  # bs,1,c
+        y = self.conv(y)  # bs,1,c
+        y = self.sigmoid(y)  # bs,1,c
+        y = y.permute(0, 2, 1).unsqueeze(-1)  # bs,c,1,1
+        y = y.expand_as(x)
+        return x * y
+
+
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = PSAMix(64, 64)
+    net = ECAAttention(64, 64)
     y = net(x)
     print(y.size())
