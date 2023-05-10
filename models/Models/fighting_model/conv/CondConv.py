@@ -29,7 +29,7 @@ class Attention(nn.Module):
         return self.sigmoid(att)
 
 class CondConv(nn.Module):
-    def __init__(self, in_planes,out_planes,kernel_size,stride,padding=0,dilation=1,grounps=1,bias=True,K=4,init_weight=True):
+    def __init__(self, in_planes,out_planes,kernel_size,stride,padding=0,dilation=1,groups=1,bias=True,K=4,init_weight=True):
         super().__init__()
         self.in_planes=in_planes
         self.out_planes=out_planes
@@ -37,13 +37,13 @@ class CondConv(nn.Module):
         self.stride=stride
         self.padding=padding
         self.dilation=dilation
-        self.groups=grounps
+        self.groups=groups
         self.bias=bias
         self.K=K
         self.init_weight=init_weight
         self.attention=Attention(in_planes=in_planes,K=K,init_weight=init_weight)
 
-        self.weight=nn.Parameter(torch.randn(K,out_planes,in_planes//grounps,kernel_size,kernel_size),requires_grad=True)
+        self.weight=nn.Parameter(torch.randn(K,out_planes,in_planes//groups,kernel_size,kernel_size),requires_grad=True)
         if(bias):
             self.bias=nn.Parameter(torch.randn(K,out_planes),requires_grad=True)
         else:

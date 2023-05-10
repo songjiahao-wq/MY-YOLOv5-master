@@ -1,6 +1,6 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 
-#Conv YOLOv5s summary: 280 layers, 7273657 parameters, 7273657 gradients, 12.1 GFLOPs
+
 
 # Parameters
 nc: 80  # number of classes
