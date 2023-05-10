@@ -34,17 +34,17 @@ head:
    [-1, 1, Conv, [128, 1, 1]],
    [-1, 1, nn.Upsample, [None, 2, 'nearest']],
    [[-1, 4], 1, Concat, [1]],  # cat backbone P3
-   [-1, 1, CA, [184]],  # 17 (P3/8-small)
+   [-1, 1, ECA, [184]],  # 17 (P3/8-small)
    [-1, 1, C3, [128, False]],  # 18 (P3/8-small)
 
    [-1, 1, DeformCAConv, [128, 3, 2]],
    [[-1, 14], 1, Concat, [1]],  # cat head P4
-   [-1, 1, CA, [256]],  # 20 (P4/16-medium)
+   [-1, 1, ECA, [256]],  # 20 (P4/16-medium)
    [-1, 1, C3, [256, False]],  # 22 (P4/16-medium)
 
    [-1, 1, DeformCAConv, [256, 3, 2]],
    [[-1, 10], 1, Concat, [1]],  # cat head P5
-   [-1, 1, CA, [512]],  # 23 (P5/32-large)
+   [-1, 1, ECA, [512]],  # 23 (P5/32-large)
    [-1, 1, C3, [512, False]],  # 26 (P5/32-large)
 
    [[17, 22, 26], 1, Detect, [nc, anchors]],  # Detect(P3, P4, P5)
