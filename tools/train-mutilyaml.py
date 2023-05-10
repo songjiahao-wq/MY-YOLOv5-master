@@ -1,5 +1,8 @@
 import os
 import subprocess
+#运行的时候需要修改yolo里Detect/foward的输出
+# Change the working directory to 'run/'
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 config_directory = r'D:\my_job\code\xianyu\沈阳理工大学本科code\cfg\Lightmodel\1'
 config_files = os.listdir(config_directory)

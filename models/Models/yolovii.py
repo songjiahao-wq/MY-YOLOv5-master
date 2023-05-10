@@ -2113,7 +2113,7 @@ class DSConv(_ConvNd):
 
 class DSConv2D(Conv):
     def __init__(self, inc, ouc, k=1, s=1, p=None, g=1, d=1, act=True):
-        super().__init__(inc, ouc, k, s, p, g, d, act)
+        super().__init__(inc, ouc, k, s, p, g, d)
         self.conv = DSConv(inc, ouc, k, s, p, g, d)
 
 class Bottleneck_DSConv(nn.Module):
