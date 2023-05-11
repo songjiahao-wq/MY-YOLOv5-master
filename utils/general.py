@@ -1037,9 +1037,10 @@ def non_max_suppression(
         # Batched NMS
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
-        i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        # i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         # i = NMS(boxes, scores, iou_thres, class_nms='CIoU')  # NMS
         # i = soft_nms2(boxes, scores, iou_thres)  # NMS
+        # i = cluster_nms(boxes, scores, iou_thres)
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
@@ -1058,6 +1059,7 @@ def non_max_suppression(
             break  # time limit exceeded
 
     return output
+
 def NMS(boxes, scores, iou_thres, class_nms='CIoU'):
     # class_nms=class_nms
     GIoU=CIoU=DIoU=EIoU=SIoU=False
@@ -1222,3 +1224,63 @@ cv2.imread, cv2.imwrite, cv2.imshow = imread, imwrite, imshow  # redefine
 
 # Variables ------------------------------------------------------------------------------------------------------------
 NCOLS = 0 if is_docker() else shutil.get_terminal_size().columns  # terminal window size for tqdm
+
+#new nms*********************************************************************************************************
+def cluster_nms(boxes, scores, iou_threshold: float = 0.5, top_k: int = 200):
+    # Collapse all the classes into 1
+    _, idx = scores.sort(0, descending=True)
+    #idx = idx[:top_k]
+    boxes_idx = boxes[idx]
+    iou = jaccard(boxes_idx, boxes_idx).triu_(diagonal=1)
+    B = iou
+    for i in range(200):
+        A = B
+        maxA, _ = torch.max(A, dim=0)
+        E = (maxA <= iou_threshold).float().unsqueeze(1).expand_as(A)
+        B = iou.mul(E)
+        if A.equal(B) == True:
+            break
+    idx_out = idx[maxA <= iou_threshold]
+    return idx_out
+def intersect(box_a, box_b):
+    """ We resize both tensors to [A,B,2] without new malloc:
+    [A,2] -> [A,1,2] -> [A,B,2]
+    [B,2] -> [1,B,2] -> [A,B,2]
+    Then we compute the area of intersect between box_a and box_b.
+    Args:
+      box_a: (tensor) bounding boxes, Shape: [A,4].
+      box_b: (tensor) bounding boxes, Shape: [B,4].
+    Return:
+      (tensor) intersection area, Shape: [A,B].
+    """
+    A = box_a.size(0)
+    B = box_b.size(0)
+    max_xy = torch.min(box_a[:, 2:].unsqueeze(1).expand(A, B, 2),
+                       box_b[:, 2:].unsqueeze(0).expand(A, B, 2))
+    min_xy = torch.max(box_a[:, :2].unsqueeze(1).expand(A, B, 2),
+                       box_b[:, :2].unsqueeze(0).expand(A, B, 2))
+    inter = torch.clamp((max_xy - min_xy), min=0)
+    return inter[:, :, 0] * inter[:, :, 1]
+def jaccard(box_a, box_b, iscrowd=False):
+    """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
+    is simply the intersection over union of two boxes.  Here we operate on
+    ground truth boxes and default boxes. If iscrowd=True, put the crowd in box_b.
+    E.g.:
+        A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
+    Args:
+        box_a: (tensor) Ground truth bounding boxes, Shape: [num_objects,4]
+        box_b: (tensor) Prior boxes from priorbox layers, Shape: [num_priors,4]
+    Return:
+        jaccard overlap: (tensor) Shape: [box_a.size(0), box_b.size(0)]
+    """
+    inter = intersect(box_a, box_b)
+    area_a = ((box_a[:, 2]-box_a[:, 0]) *
+              (box_a[:, 3]-box_a[:, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
+    area_b = ((box_b[:, 2]-box_b[:, 0]) *
+              (box_b[:, 3]-box_b[:, 1])).unsqueeze(0).expand_as(inter)  # [A,B]
+    union = area_a + area_b - inter
+
+    if iscrowd:
+        return inter / area_a
+    else:
+        return inter / union  # [A,B]
