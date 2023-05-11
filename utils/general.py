@@ -1041,7 +1041,7 @@ def non_max_suppression(
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         # i = NMS(boxes, scores, iou_thres, class_nms='CIoU')  # NMS
         # i = soft_nms2(boxes, scores, iou_thres)  # NMS
-        i = cluster_nms(boxes, scores, iou_thres,)
+        # i = cluster_nms(boxes, scores, iou_thres,)
 
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
