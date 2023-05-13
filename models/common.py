@@ -2857,7 +2857,6 @@ class C3_DCNv2(C3):
         self.m = nn.Sequential(*(Bottleneck_DCN(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 #CoordConv**************************************************
 class AddCoords(nn.Module):
-
     def __init__(self, with_r=False):
         super().__init__()
         self.with_r = with_r
@@ -3904,6 +3903,7 @@ class CAMConv(nn.Module):
         channel_out = self.sigmoid(max_out + avg_out)
         x = channel_out * x
         return self.conv(x)
+
 class RFCAConv(nn.Module):
     def __init__(self, c1, c2, kernel_size, stride):
         super(RFCAConv, self).__init__()
@@ -4406,7 +4406,7 @@ class DeformCAConv(nn.Module):
         self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
 
         # Deformable Convolution
-        self.offset_conv = nn.Conv2d(inp, 2 * kernel_size * kernel_size, kernel_size=1, stride=2,padding=0)
+        self.offset_conv = nn.Conv2d(inp, 2 * kernel_size * kernel_size, kernel_size=1, stride=2, padding=0)
         self.deform_conv = DeformConv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
         #self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
         self.bn2 = nn.BatchNorm2d(oup)
@@ -4439,7 +4439,36 @@ class DeformCAConv(nn.Module):
         out = self.silu(out)
 
         return out
+class DeformCAMConv(nn.Module):
+    def __init__(self, channel, out_channel, kernel_size, stride, reduction=16, spatial_kernel=7):
+        super().__init__()
 
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.mlp = nn.Sequential(
+            nn.Conv2d(channel, channel // reduction, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel // reduction, channel, 1, bias=False)
+        )
+        self.sigmoid = nn.Sigmoid()
+
+        # Deformable Convolution
+        self.offset_conv = nn.Conv2d(channel, 2 * kernel_size * kernel_size, kernel_size=1, stride=2, padding=0)
+        self.deform_conv = DeformConv2d(channel, out_channel, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
+        # self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
+        self.bn2 = nn.BatchNorm2d(out_channel)
+        self.silu = nn.SiLU()
+    def forward(self, x):
+        max_out = self.mlp(self.max_pool(x))
+        avg_out = self.mlp(self.avg_pool(x))
+        channel_out = self.sigmoid(max_out + avg_out)
+        x = channel_out * x
+        # Deformable Convolution
+        offset = self.offset_conv(x)
+        out = self.deform_conv(x, offset)
+        out = self.bn2(out)
+        out = self.silu(out)
+        return out
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -4896,10 +4925,22 @@ class DepthSepConv(nn.Module):
     def forward(self, x):
         y = self.dw_sp(x)
         return y
+class CAM(nn.Module):
+    def __init__(self, c1, c2):
+        super(CAM, self).__init__()
+        self.conv1 = Conv(c1, c1, 3, 1, d=1)
+        self.conv1 = Conv(c1, c1, 3, 1, d=3)
+        self.conv1 = Conv(c1, c1, 3, 1, d=5)
+    def forward(self, x):
+        r1 = self.conv1(x)
+        r2 = self.conv1(x)
+        r3 = self.conv1(x)
+        out = torch.cat((r1,r2,r3), 1)
+        return out
 
 if __name__ =="__main__":
     x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
-    net = Conv(64,64,3,1,custom_conv=ODConv2d)
+    net = CAM(64, 64)
     y = net(x)
     print(y.size())

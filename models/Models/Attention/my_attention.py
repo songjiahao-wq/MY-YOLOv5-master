@@ -177,7 +177,51 @@ class SPA(nn.Module):
         y = self.fc(y).reshape((b, c, 1, 1))
         # y = self.fc(y).reshape((b, c, 1, 1)) *self.w1 #添加自适应学习权值，对通道信息增加自适应特征学习
         return x * y
+class EfficientSPA(nn.Module):
+    #多尺度通道注意力
+    def __init__(self, channel,outchannel, reduction=16):
+        super().__init__()
+        L = 32
+        self.d = max(L, channel // reduction)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 = nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 = nn.AdaptiveAvgPool2d(4)
 
+        self.fc = nn.Sequential(
+            nn.Linear(channel * 21, self.d, bias=False),
+            nn.ReLU(),
+            nn.Linear(self.d, self.d, bias=False),
+            nn.Sigmoid()
+        )
+
+        self.fcs = nn.ModuleList([])
+        for i in range(3):
+            self.fcs.append(nn.Linear(self.d, channel))
+        self.conv = nn.Sequential(nn.Conv2d(channel, outchannel, 3, padding=3 // 2, stride=2),
+                                  nn.BatchNorm2d(outchannel),
+                                  nn.ReLU())
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        conv_outs = []
+        for conv in range(3):
+            conv_outs.append(x)
+        feats=torch.stack(conv_outs,0)#k,bs,channel,h,w
+        y1 = self.avg_pool1(x).reshape((b, -1))
+        y2 = self.avg_pool2(x).reshape((b, -1))
+        y3 = self.avg_pool4(x).reshape((b, -1))
+        y = torch.cat((y1, y2, y3), 1)
+        y = self.fc(y)
+        weights = []
+        self.softmax = nn.Softmax(dim=0)
+        for fc in self.fcs:
+            weight = fc(y)
+            weights.append(weight.view(b, c, 1, 1))  # bs,channel
+        attention_weughts = torch.stack(weights, 0)  # k,bs,channel,1,1
+        attention_weughts = self.softmax(attention_weughts)  # k,bs,channel,1,1
+        ### fuse
+        V = (attention_weughts * feats).sum(0)
+        V = self.conv(V)
+        return V
 class SPAF(nn.Module):
     #多尺度通道注意力
     def __init__(self, channel, reduction=16):
@@ -518,6 +562,6 @@ class ECAAttention(nn.Module):
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = ECAAttention(64, 64)
+    net = EfficientSPA(64, 64)
     y = net(x)
     print(y.size())
