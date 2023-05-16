@@ -17,7 +17,7 @@ def anchor_fitness(k: np.ndarray, wh: np.ndarray, thr: float):  # mutation fitne
     return f, bpr
 
 
-def main(img_size=512, n=9, thr=0.25, gen=1000):
+def main(img_size=640, n=9, thr=0.25, gen=1000):
     # 从数据集中读取所有图片的wh以及对应bboxes的wh
     dataset = VOCDataSet(voc_root=r"C:\DATA\crowhuman/", txt_name="ALL.txt")
     im_wh, boxes_wh = dataset.get_info()
@@ -39,7 +39,7 @@ def main(img_size=512, n=9, thr=0.25, gen=1000):
     # k, dist = kmeans(wh / s, n, iter=30)  # points, mean distance
     # assert len(k) == n, print(f'ERROR: scipy.cluster.vq.kmeans requested {n} points but returned only {len(k)}')
     # k *= s
-    k = k_means(wh, n)
+    k, _ = k_means(wh, n)
 
     # 按面积排序
     k = k[np.argsort(k.prod(1))]  # sort small to large
