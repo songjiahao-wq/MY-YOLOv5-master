@@ -110,4 +110,109 @@ class GELU(nn.Module):
 
     def forward(self, x):
         return 0.5 * x * (1 + torch.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
+class DyReLU(nn.Module):
+    def __init__(self, channels, reduction=4, k=2, conv_type='2d'):
+        super(DyReLU, self).__init__()
+        self.channels = channels
+        self.k = k
+        self.conv_type = conv_type
+        assert self.conv_type in ['1d', '2d']
 
+        self.fc1 = nn.Linear(channels, channels // reduction)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(channels // reduction, 2*k)
+        self.sigmoid = nn.Sigmoid()
+
+        self.register_buffer('lambdas', torch.Tensor([1.]*k + [0.5]*k).float())
+        self.register_buffer('init_v', torch.Tensor([1.] + [0.]*(2*k - 1)).float())
+
+    def get_relu_coefs(self, x):
+        theta = torch.mean(x, dim=-1)
+        if self.conv_type == '2d':
+            theta = torch.mean(theta, dim=-1)
+        theta = self.fc1(theta)
+        theta = self.relu(theta)
+        theta = self.fc2(theta)
+        theta = 2 * self.sigmoid(theta) - 1
+        return theta
+
+    def forward(self, x):
+        raise NotImplementedError
+
+class DyReLUA(DyReLU):
+    """
+    调用: self.relu = DyReLUB(64, conv_type='2d')   64=本层channels
+    """
+    def __init__(self, channels, reduction=4, k=2, conv_type='2d'):
+        super(DyReLUA, self).__init__(channels, reduction, k, conv_type)
+        self.fc2 = nn.Linear(channels // reduction, 2*k)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        theta = self.get_relu_coefs(x)  # 这里是执行到normalize
+        relu_coefs = theta.view(-1, 2*self.k) * self.lambdas + self.init_v  # 这里是执行完 theta(x)
+
+        # BxCxL -> LxCxBx1
+        x_perm = x.transpose(0, -1).unsqueeze(-1)
+        # a^k_c=relu_coefs[:, :self.k]    b^k_c=relu_coefs[:, self.k:]
+        # a^k_c(x) * x_c + b^k_c(x)
+        output = x_perm * relu_coefs[:, :self.k] + relu_coefs[:, self.k:]
+        # LxCxBx2 -> BxCxL
+        # y_c = max{a^k_c(x) * x_c + b^k_c(x)}
+        result = torch.max(output, dim=-1)[0].transpose(0, -1)
+
+        return result
+
+class DyReLUB(DyReLU):
+    def __init__(self, channels, reduction=4, k=2, conv_type='2d'):
+        super(DyReLUB, self).__init__(channels, reduction, k, conv_type)
+        self.fc2 = nn.Linear(channels // reduction, 2*k*channels)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        theta = self.get_relu_coefs(x)
+
+        relu_coefs = theta.view(-1, self.channels, 2*self.k) * self.lambdas + self.init_v
+
+        if self.conv_type == '1d':
+            # BxCxL -> LxBxCx1
+            x_perm = x.permute(2, 0, 1).unsqueeze(-1)
+            output = x_perm * relu_coefs[:, :, :self.k] + relu_coefs[:, :, self.k:]
+            # LxBxCx2 -> BxCxL
+            result = torch.max(output, dim=-1)[0].permute(1, 2, 0)
+
+        elif self.conv_type == '2d':
+            # BxCxHxW -> HxWxBxCx1
+            x_perm = x.permute(2, 3, 0, 1).unsqueeze(-1)
+            output = x_perm * relu_coefs[:, :, :self.k] + relu_coefs[:, :, self.k:]
+            # HxWxBxCx2 -> BxCxHxW
+            result = torch.max(output, dim=-1)[0].permute(2, 3, 0, 1)
+
+        return result
+# FReLU https://arxiv.org/abs/2007.11824 -------------------------------------------------------------------------------
+class FReLU(nn.Module):
+    def __init__(self, c1, k=3):  # ch_in, kernel
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c1, k, 1, 1, groups=c1, bias=False)
+        self.bn = nn.BatchNorm2d(c1)
+
+    def forward(self, x):
+        return torch.max(x, self.bn(self.conv(x)))
+
+
+class FReLU_noBN_biasTrue(nn.Module):
+    def __init__(self, c1, k=3):  # ch_in, kernel
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c1, k, 1, 1, groups=c1, bias=True)
+
+    def forward(self, x):
+        return torch.max(x, self.conv(x))
+
+
+class FReLU_noBN_biasFalse(nn.Module):
+    def __init__(self, c1, k=3):  # ch_in, kernel
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c1, k, 1, 1, groups=c1, bias=False)
+
+    def forward(self, x):
+        return torch.max(x, self.conv(x))
