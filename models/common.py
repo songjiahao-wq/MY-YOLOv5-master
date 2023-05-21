@@ -3616,9 +3616,37 @@ class GhostConv(nn.Module):
     def forward(self, x):
         y = self.primary_conv(x)
         return torch.cat([y, self.cheap_operation(y)], 1)
+class GhostConv2(nn.Module):
+    # Ghost Convolution https://github.com/huawei-noah/ghostnet
+    def __init__(self, c1, c2, k=1, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, groups
+        super().__init__()
+        c_ = c2 // 2  # hidden channels
+        self.primary_conv = Conv(c1, c_, k=1, s=1, act=act)
+        self.cheap_operation = Conv(c_, c_, k=3, s=1, p=1, g=c_, act=act)
 
+    def forward(self, x):
+        y = self.primary_conv(x)
+        return torch.cat([y, self.cheap_operation(y)], 1)
 
 class GhostBottleneckv1(nn.Module):
+    # Ghost Bottleneck https://github.com/huawei-noah/ghostnet
+    def __init__(self, c1, c2, midc, k=5, s=1, use_se = False):  # ch_in, ch_mid, ch_out, kernel, stride, use_se
+        super().__init__()
+        assert s in [1, 2]
+        c_ = midc
+        self.conv = nn.Sequential(GhostConv(c1, c_, 1, 1),              # Expansion
+                                  Conv(c_, c_, 3, s=2, p=1, g=c_, act=False) if s == 2 else nn.Identity(),  # dw
+                                  # Squeeze-and-Excite
+                                  SeBlock(c_) if use_se else nn.Sequential(),
+                                  GhostConv(c_, c2, 1, 1, act=False))   # Squeeze pw-linear
+        self.shortcut = nn.Identity() if (c1 == c2 and s == 1) else \
+            nn.Sequential(Conv(c1, c1, 3, s=s, p=1, g=c1, act=False), \
+                          Conv(c1, c2, 1, 1, act=False))  # 避免stride=2时 通道数改变的情况
+    def forward(self, x):
+        # print(self.conv(x).shape)
+        # print(self.shortcut(x).shape)
+        return self.conv(x) + self.shortcut(x)
+class GhostBottleneckv2(nn.Module):
     # Ghost Bottleneck https://github.com/huawei-noah/ghostnet
     def __init__(self, c1, c2, midc, k=5, s=1, use_se = False):  # ch_in, ch_mid, ch_out, kernel, stride, use_se
         super().__init__()
@@ -3738,7 +3766,7 @@ class SqueezeExcitev2(nn.Module):
 class GhostBottleneckV2(nn.Module):
 
     def __init__(self, in_chs, out_chs, mid_chs, dw_kernel_size=3,
-                 stride=1, se_ratio=0.,  layer_id=2, act_layer=nn.ReLU, args=None):
+                 stride=1, se_ratio=0.,  layer_id=1, act_layer=nn.ReLU, args=None):
         super(GhostBottleneckV2, self).__init__()
         has_se = se_ratio is not None and se_ratio > 0.
         self.stride = stride
