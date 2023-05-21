@@ -283,12 +283,14 @@ class ghostnetv2_model(nn.Module):
         return out
 
 if __name__ == "__main__":
-    mode = ghostnetv2_model(3,240,3)
+    mode = ghostnetv2()
+    print(mode)
     mode2 = ghostnetv2_model(3,240,4)
     mode3 = ghostnetv2_model(3,240,5)
 
     # print(mode)
     model = ghostnetv2()
+    # print(mode)
     model.eval()
     input = torch.randn(1, 3, 640, 640) #输入
     print(mode(input).shape)
