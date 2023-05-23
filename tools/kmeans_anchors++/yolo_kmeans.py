@@ -1,3 +1,14 @@
+#  1.    固定颜色    for j in range(anchors_num):
+#                      plt.scatter(data[near == j][:, 0], data[near == j][:, 1], c=cValue[j])
+#      '''
+#     Args:
+#         boxes: 需要聚类的bboxes,bboxes为n*2包含w，h
+#         k: 簇数(聚成几类)
+#         dist: 更新簇坐标的方法(默认使用中位数，比均值效果略好)
+#         use_iou：是否使用IOU做为计算
+#         use_pp：是否是同k-means++算法
+#     '''
+
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
@@ -68,7 +79,7 @@ def calc_center(boxes, k):
 
 
 # k-means聚类，且评价指标采用IOU
-def k_means(boxes, k, dist=np.median, use_iou=True, use_pp=True):
+def k_means(boxes, k, dist=np.median, use_iou=False, use_pp=True):
     """
     yolo k-means methods
     Args:
@@ -178,8 +189,9 @@ if __name__ == '__main__':
     # -------------------------------------------------------------#
     #   绘图
     # -------------------------------------------------------------#
+    colors = ["red", "green", "blue", "yellow", "purple", "orange", "pink", "black", "brown", "gray", "white", "cyan"]
     for j in range(anchors_num):
-        plt.scatter(data[near == j][:, 0], data[near == j][:, 1])
+        plt.scatter(data[near == j][:, 0], data[near == j][:, 1], c=colors[j])
         plt.scatter(cluster[j][0], cluster[j][1], marker='x', c='black')
     plt.savefig("kmeans_for_anchors.jpg")
     plt.show()

@@ -2,6 +2,16 @@
 #   kmeans虽然会对数据集中的框进行聚类，但是很多数据集由于框的大小相近，聚类出来的9个框相差不大，
 #   这样的框反而不利于模型的训练。因为不同的特征层适合不同大小的先验框，shape越小的特征层适合越大的先验框
 #   原始网络的先验框已经按大中小比例分配好了，不进行聚类也会有非常好的效果。
+#  1.    固定颜色    for j in range(anchors_num):
+#                      plt.scatter(data[near == j][:, 0], data[near == j][:, 1], c=cValue[j])
+#      '''
+#     Args:
+#         boxes: 需要聚类的bboxes,bboxes为n*2包含w，h
+#         k: 簇数(聚成几类)
+#         dist: 更新簇坐标的方法(默认使用中位数，比均值效果略好)
+#         use_iou：是否使用IOU做为计算
+#         use_pp：是否是同k-means++算法
+#     '''
 # -------------------------------------------------------------------------------------------------------#
 import glob
 import xml.etree.ElementTree as ET
@@ -135,7 +145,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------#
     #   载入数据集，可以使用VOC的xml
     # -------------------------------------------------------------#
-    path = 'D:\songjiahao\DATA\VOCdevkit\VOC2012\Annotations'
+    path = r'D:\songjiahao\DATA\VOCdevkit\VOC2012\Annotations'
 
     # -------------------------------------------------------------#
     #   载入所有的xml
@@ -155,19 +165,8 @@ if __name__ == '__main__':
     cluster = cluster * np.array([input_shape[1], input_shape[0]])
 
     # -------------------------------------------------------------#
-    #   绘图
+    #   保存txt文件
     # -------------------------------------------------------------#
-    for j in range(anchors_num):
-        plt.scatter(data[near == j][:, 0], data[near == j][:, 1])
-        plt.scatter(cluster[j][0], cluster[j][1], marker='x', c='black')
-    plt.savefig("kmeans_for_anchors.jpg")
-    plt.show()
-    print('Save kmeans_for_anchors.jpg in root dir.')
-
-    cluster = cluster[np.argsort(cluster[:, 0] * cluster[:, 1])]
-    print('avg_ratio:{:.2f}'.format(avg_ratio(data, cluster)))
-    print(cluster)
-
     f = open("yolo_anchors.txt", 'w')
     row = np.shape(cluster)[0]
     for i in range(row):
@@ -177,3 +176,20 @@ if __name__ == '__main__':
             x_y = ", %d,%d" % (cluster[i][0], cluster[i][1])
         f.write(x_y)
     f.close()
+    # -------------------------------------------------------------#
+    #   绘图
+    # -------------------------------------------------------------#
+    colors = ["red", "green", "blue", "yellow", "purple", "orange", "pink", "black", "brown", "gray", "white", "cyan"] #固定颜色使用
+
+    for j in range(anchors_num):
+        plt.scatter(data[near == j][:, 0], data[near == j][:, 1],c = colors[j])
+    for j in range(anchors_num):
+        plt.scatter(cluster[j][0], cluster[j][1], marker='x', c='black')
+    plt.savefig("kmeans_for_anchors.jpg")
+    plt.show()
+    print('Save kmeans_for_anchors.jpg in root dir.')
+
+    cluster = cluster[np.argsort(cluster[:, 0] * cluster[:, 1])]
+    print('avg_ratio:{:.2f}'.format(avg_ratio(data, cluster)))
+    print(cluster)
+
