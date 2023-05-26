@@ -190,7 +190,7 @@ def run(
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     #s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
     #tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    s = ('%22s' + '%11s' * 7) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP75', 'mAP50-95')
+    s = ('%22s' + '%11s' * 8) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP75', 'mAP50-95', 'f1')
     tp, fp, p, r, f1, mp, mr, map50, ap75, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
@@ -279,18 +279,18 @@ def run(
         # ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
         # mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
         ap50, ap75, ap = ap[:, 0], ap[:, 5], ap.mean(1)  # AP@0.5, AP@0.75, AP@0.5:0.95
-        mp, mr, map50, map75, map,f1 = p.mean(), r.mean(), ap50.mean(), ap75.mean(), ap.mean(),f1.mean()
+        mp, mr, map50, map75, map, f1 = p.mean(), r.mean(), ap50.mean(), ap75.mean(), ap.mean(), f1.mean()
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
     # Print results
     #pf = '%22s' + '%11i' * 2 + '%11.3g' * 4  # print format
     #LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 5  # print format
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 6  # print format
     # print(f1,'aaaaaaaaaa')
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map75, map,f1))
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp , mr, map50, map75, map, f1))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
-
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 5  # print format
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
@@ -350,9 +350,9 @@ def run(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
-    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / r'yolov5s.pt', help='model path(s)')
-    parser.add_argument('--batch-size', type=int, default=1, help='batch size')
+    parser.add_argument('--data', type=str, default=ROOT / 'data/VOC_five.yaml', help='dataset.yaml path')
+    parser.add_argument('--weights', nargs='+', type=str, default=ROOT / r'runs/train/loss/yolov5-Ghostv2-2-ATT-ATT-ALphawiou/weights/best.pt', help='model path(s)')
+    parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.001, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.60, help='NMS IoU threshold')
