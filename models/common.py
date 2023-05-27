@@ -280,6 +280,12 @@ class C3(nn.Module):
 
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+class C3_vanillaBlock(C3):
+    # C3 module with vanillaBlock()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Block(c_, c_, 3, 1) for _ in range(n)))
 class C3_Res2(nn.Module):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -4375,6 +4381,65 @@ class NonCAConv(nn.Module):
         out = identity * y
         return self.conv(out)
 
+class SKConv(nn.Module):
+
+    def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1, 3, 5, 7], reduction=32, group=16, L=32):
+        super().__init__()
+        inp =channel
+        group = channel
+        oup = c2
+        self.d=max(L,channel//reduction)
+        self.convs=nn.ModuleList([])
+        for k in kernels:
+            self.convs.append(
+                nn.Sequential(OrderedDict([
+                    ('conv',nn.Conv2d(channel,channel,kernel_size=k,padding=k//2,groups=group)),
+                    ('bn',nn.BatchNorm2d(channel)),
+                    ('relu',nn.SiLU()),
+                ]))
+            )
+        self.fc=nn.Linear(channel * 21 ,self.d)
+        self.fcs=nn.ModuleList([])
+        for i in range(len(kernels)):
+            self.fcs.append(nn.Linear(self.d,channel))
+        self.softmax=nn.Softmax(dim=0)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.avg_pool2 = nn.AdaptiveAvgPool2d(2)
+        self.avg_pool4 = nn.AdaptiveAvgPool2d(4)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+    def forward(self, x):
+        bs, c, _, _ = x.size()
+        conv_outs=[]
+        ### split
+        for conv in self.convs:
+            conv_outs.append(conv(x))
+        feats=torch.stack(conv_outs,0)#k,bs,channel,h,w
+
+        ### fuse
+        # U=sum(conv_outs) #bs,c,h,w
+
+        y1 = self.avg_pool1(x).reshape((bs, -1))
+        y2 = self.avg_pool2(x).reshape((bs, -1))
+        y3 = self.avg_pool4(x).reshape((bs, -1))
+        S = torch.cat((y1, y2, y3), 1)
+        ### reduction channel
+        # S=U.mean(-1).mean(-1) #bs,c
+        Z=self.fc(S) #bs,d
+
+        ### calculate attention weight
+        weights=[]
+        for fc in self.fcs:
+            weight=fc(Z)
+            weights.append(weight.view(bs,c,1,1)) #bs,channel
+        attention_weughts=torch.stack(weights,0)#k,bs,channel,1,1
+        attention_weughts=self.softmax(attention_weughts)#k,bs,channel,1,1
+
+        ### fuse
+        V=(attention_weughts*feats).sum(0)
+        V = self.conv(V)
+        return V
 class SKConv(nn.Module):
 
     def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1, 3, 5, 7], reduction=32, group=16, L=32):
