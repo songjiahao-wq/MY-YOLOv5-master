@@ -16,4 +16,17 @@ python train.py --Freeze -3#冻结后三层
 ```
 待更新：（轻量化网络名字）
 </details>
+<details open>
+<summary>Custom Backbone</summary>
 
+```bash
+# train
+tools/train_custom.py
+# yolo
+models/yolo_Backbone.py
+# yaml
+cfg/Lightmodel/yolov5-vanillaNet.yaml
+#
+```
+
+</details>
