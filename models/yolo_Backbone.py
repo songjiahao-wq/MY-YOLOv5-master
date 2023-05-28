@@ -157,6 +157,9 @@ class BaseModel(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.forward_fuse  # update forward
+            # VanillaNet
+            if hasattr(m, 'switch_to_deploy'):
+                m.switch_to_deploy
         self.info()
         return self
 
@@ -369,6 +372,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         # elif m in {}:
         #     m = m(*args)
         #     c2 = m.channel
+        # vanillaNet
+        elif m in [vanillanet_5]:
+            m = m(*args)
+            c2 = m.channel
         else:
             c2 = ch[f]
         if isinstance(c2, list):
@@ -396,7 +403,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'./yolov5-custom.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5-vanillaNet.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
