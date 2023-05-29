@@ -113,7 +113,7 @@ def get_params():
         'weight': 'runs/train/yolov5-p2-SPPFCSPC-CAConv2/weights/best.pt',
         'cfg': 'cfg/person/yolov5-p2-SPPFCSPC-CAConv.yaml',
         'device': 'cuda:0',
-        'method': 'GradCAMPlusPlus',  # GradCAMPlusPlus, GradCAM, XGradCAM
+        'method': 'GradCAMPlusPlus',  # 热力图方法：GradCAMPlusPlus, GradCAM, XGradCAM
         'layer': 'model.model[-5]',
         'backward_type': 'class',  # class or conf 如果多个类别用class更好一点.
         'conf_threshold': 0.6,  # 0.6
