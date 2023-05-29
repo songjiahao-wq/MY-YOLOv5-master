@@ -4442,7 +4442,7 @@ class SKConv(nn.Module):
         return V
 class SKConv(nn.Module):
 
-    def __init__(self, channel=512, c2=512 ,kernel_size=3,stride=2, kernels=[1, 3, 5, 7], reduction=32, group=16, L=32):
+    def __init__(self, channel=512, c2=512 , kernel_size=3, stride=2, kernels=[1, 3, 5, 7], reduction=32, group=16, L=32):
         super().__init__()
         inp =channel
         group = channel
@@ -4454,7 +4454,7 @@ class SKConv(nn.Module):
                 nn.Sequential(OrderedDict([
                     ('conv',nn.Conv2d(channel,channel,kernel_size=k,padding=k//2,groups=group)),
                     ('bn',nn.BatchNorm2d(channel)),
-                    ('relu',nn.ReLU()),
+                    ('relu',nn.SiLU()),
                 ]))
             )
         self.fc=nn.Linear(channel * 21 ,self.d)
@@ -4467,7 +4467,7 @@ class SKConv(nn.Module):
         self.avg_pool4 =    nn.AdaptiveAvgPool2d(4)
         self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
                                   nn.BatchNorm2d(oup),
-                                  nn.ReLU())
+                                  nn.SiLU())
     def forward(self, x):
         bs, c, _, _ = x.size()
         conv_outs=[]
@@ -4497,7 +4497,7 @@ class SKConv(nn.Module):
 
         ### fuse
         V=(attention_weughts*feats).sum(0)
-        V = self.conv(V)
+        V = self.conv(V+x)
         return V
 class DeformCAConv(nn.Module):
     def __init__(self, inp, oup, kernel_size, stride, reduction=32):
@@ -4562,7 +4562,7 @@ class DeformCAMConv(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
         # Deformable Convolution
-        self.offset_conv = nn.Conv2d(channel, 2 * kernel_size * kernel_size, kernel_size=1, stride=2, padding=0)
+        self.offset_conv = nn.Conv2d(channel, 2 * kernel_size * kernel_size, kernel_size=1, stride=stride, padding=0)
         self.deform_conv = DeformConv2d(channel, out_channel, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
         # self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
         self.bn2 = nn.BatchNorm2d(out_channel)
