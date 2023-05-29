@@ -28,5 +28,20 @@ models/yolo_Backbone.py
 cfg/Lightmodel/yolov5-vanillaNet.yaml
 #
 ```
+</details>
+<details open>
+<summary>生成热力图方法</summary>
+方法1
 
+```bash
+# 
+python tools/yolov5_heatmap.py
+#
+```
+方法2
+```bash
+# 
+python tools/main_gram.py
+#
+```
 </details>
