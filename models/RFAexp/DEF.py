@@ -1,43 +1,8 @@
-import torchvision.ops
-from torch.nn.parameter import Parameter
-import ast
-import contextlib
-import json
-import platform
-import warnings
-import zipfile
-from collections import OrderedDict, namedtuple
-from copy import copy
-from pathlib import Path
-from urllib.parse import urlparse
-
-import cv2
-import numpy as np
-import pandas as pd
-import requests
-import torch
-import torch.nn as nn
-from IPython.display import display
-from PIL import Image
-from torch.cuda import amp
-
-from models.experimental import *
-from models.module import *
-from utils import TryExcept
-from utils.dataloaders import exif_transpose, letterbox
-from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr,
-                           increment_path, is_notebook, make_divisible, non_max_suppression, scale_boxes, xywh2xyxy,
-                           xyxy2xywh, yaml_load)
-from utils.plots import Annotator, colors, save_one_box
-from utils.torch_utils import copy_attr, smart_inference_mode
-from typing import Callable, Optional
-from models.Models.SwinTransformer import SwinTransformerLayer,window_partition, window_reverse
-from models.Models.yolovii import Bottleneck_DSConv,Bottleneck_SAC
-import torch.nn.functional as F
-from timm.models.layers import DropPath
-from models.Models.fighting_model.attention import (SelfAttention,ExternalAttention,MUSEAttention, UFOAttention,Axial_attention, )
-from add.cv_attention import CBAM, ShuffleAttention, SimAM
 from mmcv.ops import DeformConv2d
+
+from models.module import *
+
+
 class h_sigmoid(nn.Module):
     def __init__(self, inplace=True):
         super(h_sigmoid, self).__init__()
@@ -190,6 +155,6 @@ class DeformCBAMConv(nn.Module):
 if __name__ =="__main__":
     x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
-    net = CAM(64, 64)
+    net = DeformCBAMConv(64, 64)
     y = net(x)
     print(y.size())
