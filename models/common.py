@@ -4497,7 +4497,7 @@ class SKConv(nn.Module):
 
         ### fuse
         V=(attention_weughts*feats).sum(0)
-        V = self.conv(V+x)
+        V = self.conv(V)
         return V
 class DeformCAConv(nn.Module):
     def __init__(self, inp, oup, kernel_size, stride, reduction=32):
