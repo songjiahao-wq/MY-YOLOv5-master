@@ -54,7 +54,7 @@ class activation(nn.ReLU):
             self.deploy = True
 
 
-class Block(nn.Module):
+class VanillaBlock(nn.Module):
     def __init__(self, dim, dim_out, act_num=3, stride=2, deploy=False, ada_pool=None):
         super().__init__()
         self.act_learn = 1
@@ -144,9 +144,9 @@ class VanillaNet(nn.Module):
         self.stages = nn.ModuleList()
         for i in range(len(strides)):
             if not ada_pool:
-                stage = Block(dim=dims[i], dim_out=dims[i+1], act_num=act_num, stride=strides[i], deploy=deploy)
+                stage = VanillaBlock(dim=dims[i], dim_out=dims[i+1], act_num=act_num, stride=strides[i], deploy=deploy)
             else:
-                stage = Block(dim=dims[i], dim_out=dims[i+1], act_num=act_num, stride=strides[i], deploy=deploy, ada_pool=ada_pool[i])
+                stage = VanillaBlock(dim=dims[i], dim_out=dims[i+1], act_num=act_num, stride=strides[i], deploy=deploy, ada_pool=ada_pool[i])
             self.stages.append(stage)
         self.depth = len(strides)
 
