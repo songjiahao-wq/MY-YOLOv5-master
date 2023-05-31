@@ -373,7 +373,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         #     m = m(*args)
         #     c2 = m.channel
         # vanillaNet
-        elif m in [vanillanet_5]:
+        elif m in [VanillaBlock]:
             m = m(*args)
             c2 = m.channel
         else:
