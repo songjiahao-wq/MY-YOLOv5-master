@@ -5038,18 +5038,20 @@ class CAM(nn.Module):
     def __init__(self, c1, c2):
         super(CAM, self).__init__()
         self.conv1 = Conv(c1, c1, 3, 1, d=1,g=c1)
-        self.conv1 = Conv(c1, c1, 3, 1, d=3,g=c1)
-        self.conv1 = Conv(c1, c1, 3, 1, d=5,g=c1)
+        self.conv2 = Conv(c1, c1, 3, 1, d=3,g=c1)
+        self.conv3 = Conv(c1, c1, 3, 1, d=5,g=c1)
+        self.conv4 = Conv(c1*3, c2, 1, 1)
     def forward(self, x):
         r1 = self.conv1(x)
-        r2 = self.conv1(x)
-        r3 = self.conv1(x)
+        r2 = self.conv2(x)
+        r3 = self.conv3(x)
         out = torch.cat((r1,r2,r3), 1)
         # Apply channel shuffle operation
         batch_size, num_channels, height, width = out.size()
         out = out.view(batch_size, 3, num_channels // 3, height, width)
         out = out.permute(0, 2, 1, 3, 4).contiguous()
         out = out.view(batch_size, num_channels, height, width)
+        out = self.conv4(out)
         return out
 
 if __name__ =="__main__":
