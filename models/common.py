@@ -283,7 +283,7 @@ class C3_vanillaBlock(C3):
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)
-        self.m = nn.Sequential(*(Block(c_, c_, 3, 1) for _ in range(n)))
+        self.m = nn.Sequential(*(VanillaBlock(c_, c_, 3, 1) for _ in range(n)))
 class C3_Res2(nn.Module):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion

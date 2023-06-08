@@ -16,7 +16,7 @@ from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_sm
 from models.Models.fighting_model.backbone.convnextv2 import convnextv2_att
 from models.Models.fighting_model.backbone.Ghostnetv2 import ghostnetv2_model
 from models.Models.fighting_model.backbone.Res2net import Bottle2neck
-from models.Models.fighting_model.backbone.VanillaNet import Block, vanillanet_5
+from models.Models.fighting_model.backbone.VanillaNet import VanillaBlock, vanillanet_5
 
 from models.Models.fighting_model.backbone.VanillaNet import VanillaBlock
 from models.Models.fighting_model.attention.EVCBlock import EVCBlock
