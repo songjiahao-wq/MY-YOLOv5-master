@@ -5061,7 +5061,6 @@ class CAM(nn.Module):
         out = out.view(batch_size, 3, num_channels // 3, height, width)
         out = out.permute(0, 2, 1, 3, 4).contiguous()
         out = out.view(batch_size, num_channels, height, width)
-        out = self.conv4(out)
         return out
 
 if __name__ =="__main__":
