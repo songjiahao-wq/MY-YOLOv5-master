@@ -4542,7 +4542,7 @@ class DeformCAConv(nn.Module):
         # Deformable Convolution
         self.offset_conv = nn.Conv2d(inp, 2 * kernel_size * kernel_size, kernel_size=1, stride=2, padding=0)
         self.deform_conv = DeformConv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
-        #self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
+        # self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
         self.bn2 = nn.BatchNorm2d(oup)
         self.silu = nn.SiLU()
 
@@ -4974,11 +4974,9 @@ class ASPP(nn.Module):
         rates = tuple(atrous_rates)
         grop,i = 1, 1
         for rate in rates:
-
             i+=1
             modules.append(ASPPConv(in_channels, out_channels, rate,grop))
             grop =2**i
-
 
         # 池化
         modules.append(ASPPPooling(in_channels, out_channels))
