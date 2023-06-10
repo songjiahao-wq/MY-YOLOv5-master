@@ -123,7 +123,11 @@ def load_data(path):
     #   对于每一个xml都寻找box
     # -------------------------------------------------------------#
     for xml_file in tqdm(glob.glob('{}/*xml'.format(path))):
-        tree = ET.parse(xml_file)
+        print(xml_file)
+        try:
+            tree = ET.parse(xml_file)
+        except:
+            continue
         height = int(tree.findtext('./size/height'))
         width = int(tree.findtext('./size/width'))
         if height <= 0 or width <= 0:
@@ -167,7 +171,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------#
     #   载入数据集，可以使用VOC的xml
     # -------------------------------------------------------------#
-    path = 'D:\songjiahao\DATA\VOCdevkit\VOC2012\Annotations'
+    path = r'D:\xian_yu\xianyu_lunwen\BDDFinal3181\allxml'
 
     # -------------------------------------------------------------#
     #   载入所有的xml
@@ -189,9 +193,10 @@ if __name__ == '__main__':
     # -------------------------------------------------------------#
     #   绘图
     # -------------------------------------------------------------#
-    colors = ["red", "green", "blue", "yellow", "purple", "orange", "pink", "black", "brown", "gray", "white", "cyan"]
+    colors = ["red", "green", "blue", "yellow", "purple", "orange", "pink", "brown", "gray", "white", "cyan", "black"]
     for j in range(anchors_num):
         plt.scatter(data[near == j][:, 0], data[near == j][:, 1], c=colors[j])
+    for j in range(anchors_num):
         plt.scatter(cluster[j][0], cluster[j][1], marker='x', c='black')
     plt.savefig("kmeans_for_anchors.jpg")
     plt.show()
