@@ -3636,13 +3636,13 @@ class FEM(nn.Module):
         out = self.cv2(out)
         return out
 #GhostBottleneckv1********************************
-class GhostConv(nn.Module):
+class GhostConv1(nn.Module):
     # Ghost Convolution https://github.com/huawei-noah/ghostnet
     def __init__(self, c1, c2, k=1, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, groups
         super().__init__()
         c_ = c2 // 2  # hidden channels
-        self.primary_conv = Conv(c1, c_, k=1, s=1, act=act)
-        self.cheap_operation = Conv(c_, c_, k=3, s=1, p=1, g=c_, act=act)
+        self.primary_conv = Conv(c1, c_, k=k, s=s, act=act)
+        self.cheap_operation = Conv(c_, c_, k=3, s=s, p=1, g=c_, act=act)
 
     def forward(self, x):
         y = self.primary_conv(x)
@@ -4709,6 +4709,66 @@ class CAConv2(nn.Module):
         #                  F.interpolate(x_h3, size=(h, 1), mode='nearest')], dim=1)
         # x_w = torch.cat([x_w1, F.interpolate(x_w2, size=(1, w), mode='nearest'),
         #                  F.interpolate(x_w3, size=(1, w), mode='nearest')], dim=1)
+        y = torch.cat([x_h, x_w], dim=2) #n,c,2h,1
+        y = self.conv1(y)  #n,c/16,2h,1
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2) #n,c/16,h,1
+        x_w = x_w.permute(0, 1, 3, 2) #n,c/16,1,w
+
+        a_h = self.conv_h(x_h).sigmoid()   #n,c,1,w
+        a_w = self.conv_w(x_w).sigmoid() #n,c,1,w
+
+        out = identity * a_w * a_h
+
+        return self.conv(out)
+class CAConv4(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=16):
+        super(CAConv4, self).__init__()
+        self.pool_h1 = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w1 = nn.AdaptiveAvgPool2d((1, None))
+
+        self.pool_h2 = nn.AdaptiveAvgPool2d((None, 2))
+        self.pool_w2 = nn.AdaptiveAvgPool2d((2, None))
+
+        self.pool_h3 = nn.AdaptiveAvgPool2d((None, 4))
+        self.pool_w3 = nn.AdaptiveAvgPool2d((4, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(3*inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv = nn.Sequential(nn.Conv2d(inp, oup, kernel_size, padding=kernel_size // 2, stride=stride),
+                                  nn.BatchNorm2d(oup),
+                                  nn.SiLU())
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h1 = self.pool_h1(x) #n,c,h,1
+        x_w1 = self.pool_w1(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h2 = self.pool_h2(x) #n,c,h,1
+        x_w2 = self.pool_w2(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h3 = self.pool_h3(x) #n,c,h,1
+        x_w3 = self.pool_w3(x).permute(0, 1, 3, 2)  #n,c,h,1
+
+        x_h2 = F.interpolate(x_h2, size=(h, 1), mode='nearest')
+        x_w2 = F.interpolate(x_w2, size=(w, 1), mode='nearest')
+
+        x_h3 = F.interpolate(x_h3, size=(h, 1), mode='nearest')
+        x_w3 = F.interpolate(x_w3, size=(w, 1), mode='nearest')
+
+
+        x_h = torch.cat((x_h1,x_h2,x_h3),dim=1)  #n,3c,h,1
+        x_w = torch.cat((x_w1,x_w2,x_w3),dim=1)  #n,3c,w,1
+
         y = torch.cat([x_h, x_w], dim=2) #n,c,2h,1
         y = self.conv1(y)  #n,c/16,2h,1
         y = self.bn1(y)

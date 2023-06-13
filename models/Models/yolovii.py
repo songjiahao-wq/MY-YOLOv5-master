@@ -27,8 +27,88 @@ class MP(nn.Module):
 
     def forward(self, x):
         return self.m(x)
+# class CARAFE(nn.Module):
+#     #CARAFE: Content-Aware ReAssembly of FEatures       https://arxiv.org/pdf/1905.02188.pdf
+#     def __init__(self, c1, c2, kernel_size=3, up_factor=2):
+#         super(CARAFE, self).__init__()
+#         self.kernel_size = kernel_size
+#         self.up_factor = up_factor
+#         self.down = nn.Conv2d(c1, c1 // 4, 1)
+#         self.encoder = nn.Conv2d(c1 // 4, self.up_factor ** 2 * self.kernel_size ** 2,
+#                                  self.kernel_size, 1, self.kernel_size // 2)
+#         self.out = nn.Conv2d(c1, c2, 1)
+#
+#     def forward(self, x):
+#         N, C, H, W = x.size()
+#         # N,C,H,W -> N,C,delta*H,delta*W
+#         # kernel prediction module
+#         kernel_tensor = self.down(x)  # (N, Cm, H, W)
+#         kernel_tensor = self.encoder(kernel_tensor)  # (N, S^2 * Kup^2, H, W)
+#         kernel_tensor = F.pixel_shuffle(kernel_tensor, self.up_factor)  # (N, S^2 * Kup^2, H, W)->(N, Kup^2, S*H, S*W)
+#         kernel_tensor = F.softmax(kernel_tensor, dim=1)  # (N, Kup^2, S*H, S*W)
+#         kernel_tensor = kernel_tensor.unfold(2, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W*S, S)
+#         kernel_tensor = kernel_tensor.unfold(3, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W, S, S)
+#         kernel_tensor = kernel_tensor.reshape(N, self.kernel_size ** 2, H, W, self.up_factor ** 2) # (N, Kup^2, H, W, S^2)
+#         kernel_tensor = kernel_tensor.permute(0, 2, 3, 1, 4)  # (N, H, W, Kup^2, S^2)
+#
+#         # content-aware reassembly module
+#         # tensor.unfold: dim, size, step
+#         x = F.pad(x, pad=(self.kernel_size // 2, self.kernel_size // 2,
+#                                           self.kernel_size // 2, self.kernel_size // 2),
+#                           mode='constant', value=0) # (N, C, H+Kup//2+Kup//2, W+Kup//2+Kup//2)
+#         x = x.unfold(2, self.kernel_size, step=1) # (N, C, H, W+Kup//2+Kup//2, Kup)
+#         x = x.unfold(3, self.kernel_size, step=1) # (N, C, H, W, Kup, Kup)
+#         x = x.reshape(N, C, H, W, -1) # (N, C, H, W, Kup^2)
+#         x = x.permute(0, 2, 3, 1, 4)  # (N, H, W, C, Kup^2)
+#
+#         out_tensor = torch.matmul(x, kernel_tensor)  # (N, H, W, C, S^2)
+#         out_tensor = out_tensor.reshape(N, H, W, -1)
+#         out_tensor = out_tensor.permute(0, 3, 1, 2)
+#         out_tensor = F.pixel_shuffle(out_tensor, self.up_factor)
+#         out_tensor = self.out(out_tensor)
+#         #print("up shape:",out_tensor.shape)
+#         return out_tensor
 
 
+class CARAFE(nn.Module):
+    def __init__(self, c, k_enc=3, k_up=5, c_mid=64, scale=2):
+        """ The unofficial implementation of the CARAFE module.
+        The details are in "https://arxiv.org/abs/1905.02188".
+        Args:
+            c: The channel number of the input and the output.
+            c_mid: The channel number after compression.
+            scale: The expected upsample scale.
+            k_up: The size of the reassembly kernel.
+            k_enc: The kernel size of the encoder.
+        Returns:
+            X: The upsampled feature map.
+        """
+        super(CARAFE, self).__init__()
+        self.scale = scale
+
+        self.comp = Conv(c, c_mid)
+        self.enc = Conv(c_mid, (scale * k_up) ** 2, k=k_enc, act=False)
+        self.pix_shf = nn.PixelShuffle(scale)
+
+        self.upsmp = nn.Upsample(scale_factor=scale, mode='nearest')
+        self.unfold = nn.Unfold(kernel_size=k_up, dilation=scale,
+                                padding=k_up // 2 * scale)
+
+    def forward(self, X):
+        b, c, h, w = X.size()
+        h_, w_ = h * self.scale, w * self.scale
+
+        W = self.comp(X)  # b * m * h * w
+        W = self.enc(W)  # b * 100 * h * w
+        W = self.pix_shf(W)  # b * 25 * h_ * w_
+        W = torch.softmax(W, dim=1)  # b * 25 * h_ * w_
+
+        X = self.upsmp(X)  # b * c * h_ * w_
+        X = self.unfold(X)  # b * 25c * h_ * w_
+        X = X.view(b, c, -1, h_, w_)  # b * 25 * c * h_ * w_
+
+        X = torch.einsum('bkhw,bckhw->bchw', [W, X])  # b * c * h_ * w_
+        return X
 class SP(nn.Module):
     def __init__(self, k=3, s=1):
         super(SP, self).__init__()
