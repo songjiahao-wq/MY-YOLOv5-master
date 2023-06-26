@@ -2000,7 +2000,7 @@ class SCConv(nn.Module):
         )
     def forward(self, x):
         identity = x #(c1,h,w)
-        if identity.size()[1] < self.planes:
+        if identity.size()[1] < self.planes:#
             identity = self.conv1x1(identity) #identity=(c2,h,w)
             out = torch.sigmoid( #F.interpolate(self.k2(x), identity.size()[2:])=(c2,h/2,w/2)-(c2,h,w),torch.add=(c2,2h,2w)
                 torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
@@ -2012,6 +2012,48 @@ class SCConv(nn.Module):
                 torch.add(identity, F.interpolate(self.k2(x), identity.size()[2:])))  # sigmoid(identity + k2)
             out = torch.mul(self.k3(x), out)  # k3 * sigmoid(identity + k2)
             out = self.k4(out)  # k4
+        return out
+class SCConv_1(nn.Module):
+    def __init__(self, inplanes, planes, k=3, stride=1, padding=None, dilation=1, groups=1, pooling_r=[1,3], norm_layer=nn.BatchNorm2d):
+        super(SCConv_1, self).__init__()
+        padding = autopad(k, padding, dilation)
+        self.k2 = nn.ModuleList()
+        for k in pooling_r:
+            self.k2.append(
+                nn.Sequential(
+                    nn.AvgPool2d(kernel_size=k, stride=k),
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                              padding=k // 2, bias=False),
+                    norm_layer(planes)
+                )
+            )
+        self.k3 = nn.Sequential(
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=1,
+                                padding=padding, dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+        self.k4 = nn.Sequential(
+                    nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride,
+                                padding=padding, dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+
+    def forward(self, x):
+        identity = x
+
+        # Initialize out with zeros
+        out = torch.zeros_like(identity)
+
+        # Add up all the k2 layer outputs
+        for k2_layer in self.k2:
+            out = out + F.interpolate(k2_layer(x), identity.size()[2:])
+        out = torch.sigmoid(out)  # sigmoid(identity + k2)
+        out = torch.mul(self.k3(x), out) # k3 * sigmoid(identity + k2)
+        out = torch.add(out,identity)
+        out = self.k4(out) # k4
+
         return out
 #DCNv2***************************************************************
 """
@@ -2473,9 +2515,9 @@ class Fusion_Focus(nn.Module):
 
 
 if __name__ =="__main__":
-    input = torch.randn(64,40,40)
-    input = torch.unsqueeze(input,dim=0)
-    print(input.shape)
-    # model = MixConv2d(64,84,[3,5,7])
-    # output = model(input)
-    # print(output.shape)
+    input = torch.randn(1,64,40,40)
+    # input = torch.unsqueeze(input,dim=0)
+    # print(input.shape)
+    model = SCConv_1(64, 64, 3, 1, pooling_r=[1,3,5])
+    output = model(input)
+    print(output.shape)
