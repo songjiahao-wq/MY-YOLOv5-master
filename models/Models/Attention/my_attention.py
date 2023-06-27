@@ -499,9 +499,9 @@ class SpectralAttention(nn.Module):
 
         return x_weighted
 
-class ECAAttention(nn.Module):
+class ECAAttention_1(nn.Module):
 
-    def __init__(self, c1, c2, kernel_size=3):
+    def __init__(self, c1, c2, kernel_size=7):
         super().__init__()
         channel = c1
         kernels = 3
