@@ -137,6 +137,41 @@ class SCConv_exp3(nn.Module):
         out = torch.mul(self.k3(y[0]), out) # k3 * sigmoid(identity + k2)
         out = self.k4(torch.cat((out, y[0]), dim=1)) # k4
         return out
+class SCConv_exp4(nn.Module):
+    def __init__(self, inplanes, planes, kernel, stride=1, padding=3//2, dilation=1, groups=2, pooling_r=3, norm_layer=nn.BatchNorm2d):
+        super(SCConv_exp4, self).__init__()
+        self.c = int(inplanes //16)  # hidden channels
+        self.groups= 16
+        self.spa = SPA(self.c)  # Add SPA layer
+        self.k2 = nn.Sequential(
+                    nn.AvgPool2d(kernel_size=pooling_r, stride=pooling_r),
+                    nn.Conv2d(self.c, self.c, kernel_size=3, stride=1,
+                                padding=autopad(kernel, padding, dilation), dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(self.c),
+                    )
+        self.k3 = nn.Sequential(
+                    nn.Conv2d(self.c, self.c, kernel_size=3, stride=1,
+                                padding=autopad(kernel, padding, dilation), dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(self.c),
+                    )
+        self.k4 = nn.Sequential(
+                    nn.Conv2d(inplanes, planes, kernel_size=kernel, stride=stride,
+                                padding=autopad(kernel, padding, dilation), dilation=dilation,
+                                groups=groups, bias=False),
+                    norm_layer(planes),
+                    )
+
+    def forward(self, x):
+        identity = x
+        b, c, h, w = x.size()
+        group_x = x.reshape(b * self.groups, -1, h, w)
+        # y = list(x.split((self.c, self.c), 1))
+        out = self.spa(torch.add(group_x, F.interpolate(self.k2(group_x), group_x.size()[2:]))) # sigmoid(identity + k2)
+        out = torch.mul(self.k3(group_x), out) # k3 * sigmoid(identity + k2)
+        out = self.k4(out.reshape(b, c, h, w)) # k4
+        return out
 class SEAttention(nn.Module):
 
     def __init__(self, channel=512,c2=512,reduction=16):
@@ -154,13 +189,13 @@ class SEAttention(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)
         return x * y.expand_as(x)
 if __name__ =='__main__':
-    # x = torch.randn(1, 64, 80, 80)  # 用来生成随机数字的tensor 输出一个64*32*48的张量
-    # b, c, h, w = x.shape
-    # net1 = SCConv2(64, 64, 1)
-    # # net2 = SELayer(c, c)
-    # y1 = net1(x)
-    # print(y1.shape)
+    x = torch.randn(1, 64, 80, 80)  # 用来生成随机数字的tensor 输出一个64*32*48的张量
+    b, c, h, w = x.shape
+    net1 = SCConv_exp4(64, 64, 1)
+    # net2 = SELayer(c, c)
+    y1 = net1(x)
+    print(y1.shape)
 
     # m1 = Conv(128, 128, 3, 2)
-    m2 = SCConv_exp3(128, 128, 3,2)
+    m2 = SCConv_exp4(128, 128, 3,2)
     results = profile(input=torch.randn(1, 128, 80, 80), ops=[ m2], n=3)

@@ -149,7 +149,52 @@ class LightweightSPPFA(nn.Module):
         out = self.avg_pool1(out).reshape((b, -1))
         b = self.fc(out).view(b, c, 1, 1)
         return x * b
+class LightweightSPPFA(nn.Module):
+    def __init__(self, c1, c2, k=3, reduction=16):
+        super().__init__()
+        self.cv1 = nn.Conv2d(c1, c2, 1, 1)
+        # self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.m = nn.Conv2d(kernel_size=k, stride=1, padding=k // 2)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(c1 * 4, c1 // reduction, bias=False),
+            nn.ReLU(),
+            nn.Linear(c1 // reduction, c2, bias=False),
+            nn.Sigmoid()
+        )
 
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        x1 = self.cv1(x)
+        y1 = self.m(x1)
+        y2 = self.m(y1)
+        out = torch.cat((x1, y1, y2, self.m(y2)), 1)
+        out = self.avg_pool1(out).reshape((b, -1))
+        b = self.fc(out).view(b, c, 1, 1)
+        return x * b
+class LightweightSPPFA_1(nn.Module):
+    def __init__(self, c1, c2, k=3, reduction=16):
+        super().__init__()
+        self.cv1 = nn.Conv2d(c1, c1//reduction, 1, 1)
+        # self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.m = nn.Conv2d(c1//reduction, c1//reduction, kernel_size=k, stride=1, padding=k // 2,groups=16)
+        self.avg_pool1 = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(c1//reduction * 4, c1 // reduction, bias=False),
+            nn.ReLU(),
+            nn.Linear(c1 // reduction, c2, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        x1 = self.cv1(x)
+        y1 = self.m(x1)
+        y2 = self.m(y1)
+        out = torch.cat((x1, y1, y2, self.m(y2)), 1)
+        out = self.avg_pool1(out).reshape((b, -1))
+        b = self.fc(out).view(b, c, 1, 1)
+        return x * b
 #SPPA_CBAM****************************************
 class SPA(nn.Module):
     #多尺度通道注意力
