@@ -45,3 +45,10 @@ python tools/main_gram.py
 #
 ```
 </details>
+<details open>
+<summary>添加dyhead</summary>
+
+```bash
+cfg/yolov5s-Improved/head_improved/yolov5s-dyhead.yaml
+```
+</details>

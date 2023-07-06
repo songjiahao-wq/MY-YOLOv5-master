@@ -52,5 +52,6 @@ from models.Models.fighting_model.attention.ShuffleAttention import ShuffleAtten
 from models.Models.fighting_model.attention.SGE import SpatialGroupEnhance #sge = SpatialGroupEnhance(groups=8)
 from models.Models.fighting_model.attention.A2Atttention import DoubleAttention #a2 = DoubleAttention(512,128,128,True)
 from models.Models.fighting_model.attention.Biformer import BiLevelRoutingAttention  #a2 = DoubleAttention(512,128,128,True)
+from models.ExpCode.dyhead import DyHeadBlock, Detect_dyhead
 #exp--------------------------------------------------------------------------------------------------------------------
 from models.ExpCode.SCCONV_exp import SCConv_exp1,SCConv_exp2,SCConv_exp3
