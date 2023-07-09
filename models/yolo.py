@@ -143,17 +143,20 @@ class BaseModel(nn.Module):
 
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
+        self.GFLOPS = 0
         for m in self.model:
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
-                self._profile_one_layer(m, x, dt)
+                self.GFLOPS = self._profile_one_layer(m, x, dt)
             # print(m)
             x = m(x)  # run
-            # print(x,'aaaaaaaaaaaaaaaaaaaaa')
+
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
+        if profile:
+            print(f"GFLOPS是:{self.GFLOPS:10.2f}")
         return x
 
     def _profile_one_layer(self, m, x, dt):
@@ -168,6 +171,7 @@ class BaseModel(nn.Module):
         LOGGER.info(f'{dt[-1]:10.2f} {o:10.2f} {m.np:10.0f}  {m.type}')
         if c:
             LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
+        return self.GFLOPS + o
 
     def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
         LOGGER.info('Fusing layers... ')
@@ -408,7 +412,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
         #"""**************add Attention***************"""
         elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, PSAModule_s, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
-                   CAM, EVCBlock, EMA_ATT,SCConv_exp1,SCConv_exp2,SCConv_exp3}:
+                   CAM, EVCBlock, EMA_ATT,SCConv_exp1,SCConv_exp2,SCConv_exp3, LocalAttention}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -474,7 +478,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5sEfficientLiteV2.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'yolov5s-DAT_transformer.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

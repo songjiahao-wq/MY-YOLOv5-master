@@ -18,7 +18,7 @@ from timm.models.layers import DropPath, to_2tuple
 
 class LocalAttention(nn.Module):
 
-    def __init__(self, dim, heads, window_size, attn_drop, proj_drop):
+    def __init__(self, dim=512,dimout=512, heads=4, window_size=4, attn_drop=0.0, proj_drop=0.0):
         
         super().__init__()
 
@@ -87,7 +87,7 @@ class LocalAttention(nn.Module):
         x = self.proj_drop(self.proj_out(x)) # B' x N x C
         x = einops.rearrange(x, '(b r1 r2) (h1 w1) c -> b c (r1 h1) (r2 w1)', r1=r1, r2=r2, h1=self.window_size[0], w1=self.window_size[1]) # B x C x H x W
         
-        return x, None, None
+        return x
 
 class ShiftWindowAttention(LocalAttention):
 
@@ -588,3 +588,7 @@ if __name__ == '__main__':
     )
     output=model(input)
     print(output[0].shape)
+if __name__ =="__main__":
+    input = torch.randn(1, 512 ,20, 20)
+    model = LocalAttention(dim=512)
+    print(model(input)[0].shape)

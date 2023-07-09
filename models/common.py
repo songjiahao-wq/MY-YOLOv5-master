@@ -122,7 +122,7 @@ class TransformerLayer(nn.Module):
         self.q = nn.Linear(c, c, bias=False)
         self.k = nn.Linear(c, c, bias=False)
         self.v = nn.Linear(c, c, bias=False)
-        # self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
+        self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
         # self.ma = SelfAttention.ScaledDotProductAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
         # self.ma = MUSEAttention.MUSEAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
         # self.ma = UFOAttention.UFOAttention(d_model=c, d_k=c, d_v=c, h=num_heads)
@@ -5209,6 +5209,7 @@ class EMA(nn.Module):
         x22 = x1.reshape(b * self.groups, c // self.groups, -1)  # b*g, c//g, hw
         weights = (torch.matmul(x11, x12) + torch.matmul(x21, x22)).reshape(b * self.groups, 1, h, w)
         return (group_x * weights.sigmoid()).reshape(b, c, h, w)
+
 class ema_1(nn.Module):
     def __init__(self,c1, c2, k ,s,factor = 4):
         super().__init__()
@@ -5237,6 +5238,7 @@ class ema_1(nn.Module):
             return (group_x * (x1+x2).sigmoid()).reshape(b, c, h, w)
         else:
             return self.conv((group_x * (x1 + x2).sigmod()).reshape(b, c, h, w))
+
 class ema_2(nn.Module):
     def __init__(self,c1, c2, k ,s,factor = 4):
         super().__init__()
@@ -5260,6 +5262,7 @@ class ema_2(nn.Module):
 
         x2 = self.at(self.conv3x3(group_x) + self.conv5x5(group_x))
         return self.conv((group_x * (x1 +x2).sigmod()))
+
 if __name__ =="__main__":
     x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
