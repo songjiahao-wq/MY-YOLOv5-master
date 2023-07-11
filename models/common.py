@@ -5451,7 +5451,7 @@ class VoVGSCSPC(VoVGSCSP):
 class SubPixelConvolution(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
         super(SubPixelConvolution, self).__init__()
-        self.conv = DW(in_channels, out_channels * (scale_factor ** 2), kernel_size=3, stride=1, padding=1)
+        self.conv = Conv(in_channels, out_channels * (scale_factor ** 2), kernel_size=3, stride=1, padding=1)
         self.pixel_shuffle = nn.PixelShuffle(scale_factor)
 
     def forward(self, x):
