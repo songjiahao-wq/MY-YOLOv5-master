@@ -4573,6 +4573,52 @@ class DeformCAConv(nn.Module):
         out = self.silu(out)
 
         return out
+class CAGSConv(nn.Module):
+    def __init__(self, inp, oup, kernel_size, stride, reduction=32):
+        super(CAGSConv, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, inp, kernel_size=1, stride=1, padding=0)
+
+        # Deformable Convolution
+        self.offset_conv = nn.Conv2d(inp, 2 * kernel_size * kernel_size, kernel_size=1, stride=1, padding=0)
+        self.deform_conv = DeformConv2d(inp, inp, kernel_size=kernel_size, padding=kernel_size // 2, stride=1)
+        # self.deform_conv = torchvision.ops.deform_conv2d(inp, oup, kernel_size=kernel_size, padding=kernel_size // 2, stride=stride)
+        self.bn2 = nn.BatchNorm2d(oup)
+        self.silu = nn.SiLU()
+        self.GSConv = GSConv(inp ,oup, kernel_size, stride)
+    def forward(self, x):
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        # Deformable Convolution
+
+        return self.GSConv(out)
+
 class DeformCAMConv(nn.Module):
     def __init__(self, channel, out_channel, kernel_size, stride, reduction=16, spatial_kernel=7):
         super().__init__()
@@ -5130,11 +5176,12 @@ class CAM(nn.Module):
         r2 = self.conv2(x)
         r3 = self.conv3(x)
         out = torch.cat((r1,r2,r3), 1)
-        # Apply channel shuffle operation
-        batch_size, num_channels, height, width = out.size()
-        out = out.view(batch_size, 3, num_channels // 3, height, width)
-        out = out.permute(0, 2, 1, 3, 4).contiguous()
-        out = out.view(batch_size, num_channels, height, width)
+        out = self.conv4(out)
+        # # Apply channel shuffle operation
+        # batch_size, num_channels, height, width = out.size()
+        # out = out.view(batch_size, 3, num_channels // 3, height, width)
+        # out = out.permute(0, 2, 1, 3, 4).contiguous()
+        # out = out.view(batch_size, num_channels, height, width)
         return out
 # EMA注意力 https://arxiv.org/ftp/arxiv/papers/2305/2305.13563.pdf
 class EMA_ATT(nn.Module):
@@ -5264,6 +5311,33 @@ class ema_2(nn.Module):
         x2 = self.at(self.conv3x3(group_x) + self.conv5x5(group_x))
         return self.conv((group_x * (x1 +x2).sigmod()))
 
+class EMA_3(nn.Module):
+    def __init__(self, channels, c2=None, factor=32):
+        super(EMA_3, self).__init__()
+        self.groups = factor
+        assert channels // self.groups > 0
+        self.softmax = nn.Softmax(-1)
+        self.agp = nn.AdaptiveAvgPool2d((1, 1))
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        self.gn = nn.GroupNorm(channels // self.groups, channels // self.groups)
+        self.conv1x1 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=1, stride=1, padding=0)
+        self.conv3x3 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=3, stride=1, padding=1)
+        self.cam = CAM(channels // self.groups,channels // self.groups)
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        group_x = x.reshape(b * self.groups, -1, h, w)  # b*g,c//g,h,w
+        x_h = self.pool_h(group_x)
+        x_w = self.pool_w(group_x).permute(0, 1, 3, 2)
+        hw = self.conv1x1(torch.cat([x_h, x_w], dim=2))
+        x_h, x_w = torch.split(hw, [h, w], dim=2)
+        x1 = group_x * x_h.sigmoid() * x_w.permute(0, 1, 3, 2).sigmoid()
+        # x1 = x1.permute(0, 1, 2, 3)
+        x2 = self.cam(x1)
+        return (x1 * x2.sigmoid()).permute(1, 0, 2, 3)
+
+
 # slim-neck-by-gsconv https://github.com/AlanLi1997/slim-neck-by-gsconv
 class GSConv(nn.Module):
     # GSConv https://github.com/AlanLi1997/slim-neck-by-gsconv
@@ -5286,6 +5360,31 @@ class GSConv(nn.Module):
         y = x2.reshape(b_n, 2, h * w)
         y = y.permute(1, 0, 2)
         y = y.reshape(2, -1, n // 2, h, w)
+
+        return torch.cat((y[0], y[1]), 1)
+class GSConv_s(nn.Module):
+    # GSConv https://github.com/AlanLi1997/slim-neck-by-gsconv
+    def __init__(self, c1, c2, k=1, s=1, g=1, act=True):
+        super().__init__()
+        c_ = c2 // 2
+        self.cv1 = Conv(c1, c_, k, s, None, g, act)
+        self.cv2 = Conv(c_, c_, 5, 1, None, c_, act)
+
+    def forward(self, x):
+        # 假设输入特征向量的形状为 (batch_size, channels, height, width)
+        input_features = x  # 示例输入特征向量
+
+        # 定义注意力线性层
+        attention_linear = nn.Linear(64, 1)
+
+        # 在批次维度上计算注意力权重
+        attention_weights = attention_linear(input_features).squeeze(dim=-1)
+
+        # 对注意力权重进行softmax归一化
+        attention_weights = torch.softmax(attention_weights, dim=0)
+
+        # 将注意力权重应用于特征向量
+        attention_output = torch.mul(input_features, attention_weights.unsqueeze(dim=-1))
 
         return torch.cat((y[0], y[1]), 1)
 
@@ -5348,9 +5447,30 @@ class VoVGSCSPC(VoVGSCSP):
         super().__init__(c1, c2)
         c_ = int(c2 * 0.5)  # hidden channels
         self.gsb = GSBottleneckC(c_, c_, 1, 1)
+# 亚像素卷积
+class SubPixelConvolution(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
+        super(SubPixelConvolution, self).__init__()
+        self.conv = DW(in_channels, out_channels * (scale_factor ** 2), kernel_size=3, stride=1, padding=1)
+        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.pixel_shuffle(x)
+        return x
+class SubPixelConvolution_s(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
+        super(SubPixelConvolution_s, self).__init__()
+        self.conv = DWConv(in_channels, out_channels * (scale_factor ** 2), 3, 1, 1)
+        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.pixel_shuffle(x)
+        return x
 if __name__ =="__main__":
     x = torch.randn(2, 64, 20, 20)
     b, c, h, w = x.shape
-    net = ema_1(64, 64,1,1)
+    net = SubPixelConvolution_s(64, 64,3,2)
     y = net(x)
     print(y.size())
