@@ -52,3 +52,11 @@ python tools/main_gram.py
 cfg/yolov5s-Improved/head_improved/yolov5s-dyhead.yaml
 ```
 </details>
+
+<details open>
+<summary>论文复现及改动：特征融合网络ES-Net.py</summary>
+
+```bash
+cfg/yolov5s-Improved/head_improved/yolov5s-dyhead.yaml
+```
+</details>
