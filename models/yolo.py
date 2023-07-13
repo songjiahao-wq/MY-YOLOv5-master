@@ -390,7 +390,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv,
         DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv,
         SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
-        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv}:#添加模块
+        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -481,7 +481,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'yolov5s-sub-pixel convolution.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/Es Net/ES-Net.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

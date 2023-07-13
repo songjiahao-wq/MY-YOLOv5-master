@@ -5,11 +5,57 @@
 时间：2022年
 发表于：IEEE Transactions on Instrumentation and Measurement
 """
-from models.common import Conv, DWConv
+
 import torch
 import torch.nn as nn
+import math
 import torch.nn.functional as F
+def autopad(k, p=None, d=1):  # kernel, padding, dilation
+    # Pad to 'same' shape outputs
+    if d > 1:
+        k = d * (k - 1) + 1 if isinstance(k, int) else [d * (x - 1) + 1 for x in k]  # actual kernel-size
+    if p is None:
+        p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
+    return p
+class Conv(nn.Module):
+    default_act = nn.SiLU()
 
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True, custom_conv=None):
+        super().__init__()
+        if custom_conv is None:
+            self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        else:
+            self.conv = custom_conv(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+        # self.act = nn.Identity() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.Tanh() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.Sigmoid() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.ReLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.LeakyReLU(0.1) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.Hardswish() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = Mish() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = FReLU(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = AconC(c2) iMemoryEfficientMisf act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = MetaAconC(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = SiLU_beta(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = FReLU_noBN_biasFalse(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = FReLU_noBN_biasTrue(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = DyReLUA(c2, conv_type='2d') if act is True else (act if isinstance(act, nn.Module) else nn.Identity())#参数量大一些
+        # self.act = DyReLUB(c2, conv_type='2d') if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # 比较看好的激活函数是DyReLU和meta - AconC这两个激活函数
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        return self.act(self.conv(x))
+
+
+class DWConv(Conv):
+    # Depth-wise convolution
+    def __init__(self, c1, c2, k=1, s=1, d=1, act=True):  # ch_in, ch_out, kernel, stride, dilation, activation
+        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), d=d, act=act)
 class ChannelAttention(nn.Module):
     def __init__(self, in_channels):
         super(ChannelAttention, self).__init__()
@@ -97,6 +143,7 @@ class MMF(nn.Module):
             DWConv(c1 , c1, 3),
             nn.Sigmoid() #or nn.Sigmoid()
         )
+        self.conv1_1 = Conv(c1, c1, 1)
     def forward(self, x):
         b, c, h, w = x.shape
         y1 = self.avg_pool1(x).reshape((b, -1))
@@ -107,7 +154,7 @@ class MMF(nn.Module):
         y3 = self.fc3(y3).reshape((b, c, 1, 1)) * x
         y = self.conv1(torch.cat((y1,y2,y3), dim=1))
         out = self.conv(y)* y
-        return out
+        return out + self.conv1_1(x)
 
 if __name__ =="__main__":
     # 创建模型实例
