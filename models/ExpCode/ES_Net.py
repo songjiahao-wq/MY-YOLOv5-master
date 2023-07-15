@@ -28,23 +28,6 @@ class Conv(nn.Module):
             self.conv = custom_conv(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d)
         self.bn = nn.BatchNorm2d(c2)
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
-        # self.act = nn.Identity() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.Tanh() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.Sigmoid() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.ReLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.LeakyReLU(0.1) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.Hardswish() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = Mish() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = FReLU(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = AconC(c2) iMemoryEfficientMisf act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = MetaAconC(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = SiLU_beta(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = FReLU_noBN_biasFalse(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = FReLU_noBN_biasTrue(c2) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # self.act = DyReLUA(c2, conv_type='2d') if act is True else (act if isinstance(act, nn.Module) else nn.Identity())#参数量大一些
-        # self.act = DyReLUB(c2, conv_type='2d') if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        # 比较看好的激活函数是DyReLU和meta - AconC这两个激活函数
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
 
@@ -83,9 +66,9 @@ class PoolingUpsampleModel(nn.Module):
         self.pool3 = nn.AdaptiveAvgPool2d(3)
 
         # 创建三个上采样层，分别将各自对应的池化结果上采样到原始尺度
-        self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.up2 = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=True)
-        self.up3 = nn.Upsample(scale_factor=6, mode='bilinear', align_corners=True)
+        # self.up1 = F.interpolate(scale_factor=2,size=[], mode='bilinear', align_corners=True)
+        # self.up2 = F.interpolate(scale_factor=4, mode='bilinear', align_corners=True)
+        # self.up3 = F.interpolate(scale_factor=6, mode='bilinear', align_corners=True)
 
         # 创建一个卷积层，它将池化和上采样的结果连接在一起
         self.conv = nn.Conv2d(in_channels * 3, out_channels, kernel_size=1)
@@ -100,9 +83,10 @@ class PoolingUpsampleModel(nn.Module):
         pool3 = self.pool3(x)
 
         # 进行上采样操作
-        up1 = self.up1(pool1)
-        up2 = self.up2(pool2)
-        up3 = self.up3(pool3)
+        up1 = F.interpolate(pool1, size=[x.size(2), x.size(3)], mode="nearest")
+        up2 = F.interpolate(pool2, size=[x.size(2), x.size(3)], mode="nearest")
+        up3 = F.interpolate(pool3, size=[x.size(2), x.size(3)], mode="nearest")
+
 
         # 将上采样的结果融合
         fused = torch.cat((up1, up2, up3), dim=1)
@@ -114,6 +98,7 @@ class PoolingUpsampleModel(nn.Module):
         attention_output = self.attention(output)
 
         return attention_output
+
 class MMF(nn.Module):
     def __init__(self, c1, c2, ratio=16):
         super(MMF, self).__init__()
@@ -158,10 +143,10 @@ class MMF(nn.Module):
 
 if __name__ =="__main__":
     # 创建模型实例
-    Model = MMF(c1=64, c2=64)
+    Model = PoolingUpsampleModel(64, 64)
 
     # 随机输入数据
-    input_data = torch.randn(1, 64, 64, 64)
+    input_data = torch.randn(1, 64, 20, 20)
 
     # 前向传播
     output = Model(input_data)

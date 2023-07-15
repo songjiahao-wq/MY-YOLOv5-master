@@ -60,3 +60,11 @@ cfg/yolov5s-Improved/head_improved/yolov5s-dyhead.yaml
 cfg/yolov5s-Improved/head_improved/yolov5s-dyhead.yaml
 ```
 </details>
+
+<details open>
+<summary>亚像素卷积上采样</summary>
+
+```bash
+yolov5s-sub-pixel convolution.yaml
+```
+</details>
