@@ -369,11 +369,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             t = m
             m = timm.create_model(m, pretrained=args[0], features_only=True)
             c2 = m.feature_info.channels()
-        # elif m in {}:
-        #     m = m(*args)
-        #     c2 = m.channel
-        # vanillaNet
-        elif m in [VanillaBlock]:
+        ## *** timm-Backbone ***
+        elif m in [VanillaBlock, vanillanet_5]:
             m = m(*args)
             c2 = m.channel
         else:

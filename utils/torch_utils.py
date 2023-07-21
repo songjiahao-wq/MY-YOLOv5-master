@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
 
+import timm
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -341,6 +342,8 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
         optimizer = torch.optim.RMSprop(g[2], lr=lr, momentum=momentum)
     elif name == 'SGD':
         optimizer = torch.optim.SGD(g[2], lr=lr, momentum=momentum, nesterov=True)
+    elif name == 'other':
+        optimizer = timm.optim.create_optimizer(model, 'adamp', lr=0.1,betas=(momentum, 0.999), weight_decay=0.0)
     else:
         raise NotImplementedError(f'Optimizer {name} not implemented.')
 

@@ -5288,7 +5288,8 @@ class ema_1(nn.Module):
             return self.conv((group_x * (x1 + x2).sigmoid()).reshape(b, c, h, w))
 
 class ema_2(nn.Module):
-    def __init__(self,c1, c2, k ,s,factor = 4):
+    #NEU all        360        823      0.703      0.735      0.753      0.404
+    def __init__(self,c1, c2, k , s, factor = 8):
         super().__init__()
         self.groups = factor
         # assert c2 // self.groups > 0
@@ -5299,7 +5300,7 @@ class ema_2(nn.Module):
         self.at = SELayer(c1// self.groups,1)
         self.conv3x3 = Conv(c1 // self.groups, c1// self.groups, k=3, s=1,g=4)
         self.conv5x5 = Conv(c1 // self.groups, c1// self.groups, k=5, s=1,g=4)
-        self.conv = Conv(c1// self.groups, c2)
+        self.conv = Conv(c1, c2, k, s)
     def forward(self, x):
         b, c, h, w = x.size()
         group_x = x.reshape(b * self.groups, -1, h, w)  # b*g,c//g,h,w
@@ -5310,7 +5311,8 @@ class ema_2(nn.Module):
         x1 = self.gn(group_x * x_h.sigmoid() * x_w.permute(0, 1, 3, 2).sigmoid())
 
         x2 = self.at(self.conv3x3(group_x) + self.conv5x5(group_x))
-        return self.conv((group_x * (x1 +x2).sigmoid()))
+        out = (group_x * (x1 + x2).sigmoid()).reshape(b, -1, h, w)
+        return self.conv(out)
 
 class EMA_3(nn.Module):
     def __init__(self, channels, c2=None, factor=32):

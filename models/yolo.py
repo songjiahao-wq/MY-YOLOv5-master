@@ -149,10 +149,19 @@ class BaseModel(nn.Module):
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self.GFLOPS = self._profile_one_layer(m, x, dt)
-            # print(m)
-            x = m(x)  # run
-
-            y.append(x if m.i in self.save else None)  # save output
+            if hasattr(m, 'backbone'): # 判断m具有backbone的属性
+                x = m(x)
+                if len(x) == 4:
+                    x.insert(0, None)
+                for i_idx, i in enumerate(x):
+                    if i_idx in self.save:
+                        y.append(i)
+                    else:
+                        y.append(None)
+                x = x[-1]
+            else:
+                x = m(x)  # run
+                y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         if profile:
@@ -369,13 +378,23 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
+    is_backbone = False
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     GHOSTBottleneck_layers, widths = [], []
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
-        m = eval(m) if isinstance(m, str) else m  # eval strings
+        ## *** timm-addition ***
+        try:
+            t = m
+            m = eval(m) if isinstance(m, str) else m  # eval strings
+        except:
+            pass
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
-                args[j] = eval(a) if isinstance(a, str) else a  # eval strings
+                ## *** timm-addition ***
+                try:
+                    args[j] = eval(a) if isinstance(a, str) else a  # eval strings
+                except:
+                    args[j] = a
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
@@ -390,7 +409,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv,
         DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv,
         SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
-        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel}:#添加模块
+        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, ema_1, ema_2}:#添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -463,25 +482,43 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] // args[0] ** 2
         elif m is InceptionNext_small:
             c2 = args[0]
+        ## *** timm-Backbone ***
+        elif m in [VanillaBlock, vanillanet_5]:
+            m = m(*args)
+            c2 = m.channel
         else:
             c2 = ch[f]
+        ## *** timm-addition ***
+        if isinstance(c2, list):
+            is_backbone = True
+            m_ = m
+            m_.backbone = True
+        else:
+            m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+            t = str(m)[8:-2].replace('__main__.', '')  # module type
 
-        m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
-        t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
-        m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
+        ## *** timm-addition ***
+        m_.i, m_.f, m_.type, m_.np = i + 4 if is_backbone else i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
-        save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
+        ## *** timm-addition ***
+        save.extend(x % (i + 4 if is_backbone else i) for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
             ch = []
-        ch.append(c2)
+        ## *** timm-addition ***
+        if isinstance(c2, list):
+            ch.extend(c2)
+            if len(c2) == 4:
+                ch.insert(0, 0)
+        else:
+            ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'yolov5s.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5-vanillaNet.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
