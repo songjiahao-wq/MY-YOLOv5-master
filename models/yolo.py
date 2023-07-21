@@ -28,7 +28,7 @@ from utils.general import LOGGER, check_version, check_yaml, make_divisible, pri
 from utils.plots import feature_visualization
 from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
                                time_sync)
-
+import timm
 
 try:
     import thop  # for FLOPs computation
@@ -483,6 +483,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is InceptionNext_small:
             c2 = args[0]
         ## *** timm-Backbone ***
+        elif isinstance(m, str):
+            t = m
+            m = timm.create_model(m, pretrained=args[0], features_only=True)
+            c2 = m.feature_info.channels()
         elif m in [VanillaBlock, vanillanet_5]:
             m = m(*args)
             c2 = m.channel
@@ -518,7 +522,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5-vanillaNet.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../models/yolov5-custom.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

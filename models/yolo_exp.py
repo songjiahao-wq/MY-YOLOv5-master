@@ -13,6 +13,7 @@ import platform
 import sys
 from copy import deepcopy
 from pathlib import Path
+import timm
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -483,6 +484,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is InceptionNext_small:
             c2 = args[0]
         ## *** timm-Backbone ***
+        elif isinstance(m, str):
+            t = m
+            m = timm.create_model(m, pretrained=args[0], features_only=True)
+            c2 = m.feature_info.channels()
         elif m in [VanillaBlock, vanillanet_5]:
             m = m(*args)
             c2 = m.channel
