@@ -133,7 +133,7 @@ class PolyScheduler(SchedulerBase):
 class GAM(torch.optim.Optimizer):
     def __init__(self, params, base_optimizer, model, grad_rho_scheduler=None,
                  grad_norm_rho_scheduler=None, adaptive=False, perturb_eps=1e-12, args=None,
-                 grad_reduce='mean', **kwargs):
+                 grad_reduce='mean',lr=0.0, **kwargs):
         defaults = dict(adaptive=adaptive, **kwargs)
         super(GAM, self).__init__(params, defaults)
         self.grad_rho_scheduler = grad_rho_scheduler
@@ -145,7 +145,7 @@ class GAM(torch.optim.Optimizer):
         self.adaptive = adaptive
         self.args = args
         self.get_grad_reduce(grad_reduce)
-
+        self.lr = lr
         self.update_rho_t()
 
     def get_grad_reduce(self, grad_reduce: str):

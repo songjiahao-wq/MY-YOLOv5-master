@@ -5285,7 +5285,7 @@ class ema_1(nn.Module):
         if self.k ==1:
             return (group_x * (x1+x2).sigmoid()).reshape(b, c, h, w)
         else:
-            return self.conv((group_x * (x1 + x2).sigmod()).reshape(b, c, h, w))
+            return self.conv((group_x * (x1 + x2).sigmoid()).reshape(b, c, h, w))
 
 class ema_2(nn.Module):
     def __init__(self,c1, c2, k ,s,factor = 4):
@@ -5294,6 +5294,7 @@ class ema_2(nn.Module):
         # assert c2 // self.groups > 0
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        self.gn = nn.GroupNorm(c1 // self.groups, c1 // self.groups)
         self.conv1x1 = nn.Conv2d(c1 // self.groups, c1// self.groups, kernel_size=1, stride=1, padding=0)
         self.at = SELayer(c1// self.groups,1)
         self.conv3x3 = Conv(c1 // self.groups, c1// self.groups, k=3, s=1,g=4)
@@ -5309,7 +5310,7 @@ class ema_2(nn.Module):
         x1 = self.gn(group_x * x_h.sigmoid() * x_w.permute(0, 1, 3, 2).sigmoid())
 
         x2 = self.at(self.conv3x3(group_x) + self.conv5x5(group_x))
-        return self.conv((group_x * (x1 +x2).sigmod()))
+        return self.conv((group_x * (x1 +x2).sigmoid()))
 
 class EMA_3(nn.Module):
     def __init__(self, channels, c2=None, factor=32):
@@ -5469,8 +5470,8 @@ class SubPixelConvolution_s(nn.Module):
         x = self.pixel_shuffle(x)
         return x
 if __name__ =="__main__":
-    x = torch.randn(2, 64, 20, 20)
+    x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = SubPixelConvolution_s(64, 64,3,2)
+    net = ema_2(64, 64, 3, 2)
     y = net(x)
     print(y.size())
