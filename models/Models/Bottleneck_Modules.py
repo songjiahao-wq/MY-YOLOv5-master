@@ -192,8 +192,6 @@ class C3_Expand(C3):
 """
 # CVPR2023 ScSCConv https://mp.weixin.qq.com/s/KQV_gfU5yQVa33sXIVueMA
 """
-
-
 class GroupBatchnorm2d(nn.Module):
     def __init__(self, c_num: int,
                  group_num: int = 16,
