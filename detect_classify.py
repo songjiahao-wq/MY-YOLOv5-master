@@ -130,9 +130,7 @@ def run(
 
         # Second-stage classifier (optional)
         import utils
-        efficient_weight = r'D:\my_job\code\xianyu\yolov5-master\classify\yolov5s-cls.pt'
-        classifier_model = torch.load(efficient_weight)
-
+        classifier_model = DetectMultiBackend('./runs/train-cls/exp15/weights/best.pt', device=device, dnn=dnn, data=data, fp16=half)
         pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process predictions
@@ -239,7 +237,7 @@ def parse_opt():
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
-    parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
+    parser.add_argument('--exist-ok', default=True, action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')

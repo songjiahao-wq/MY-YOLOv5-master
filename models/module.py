@@ -57,4 +57,4 @@ from models.ExpCode.dyhead import DyHeadBlock, Detect_dyhead
 from models.ExpCode.SCCONV_exp import SCConv_exp1,SCConv_exp2,SCConv_exp3
 from models.ExpCode.ES_Net import MMF, PoolingUpsampleModel
 from models.Models.fighting_model.attention.DAT import LocalAttention
-
+from models.Models.Bottleneck_Modules import C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv

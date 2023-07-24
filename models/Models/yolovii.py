@@ -1968,7 +1968,7 @@ class SCConv(nn.Module):
             out = self.k4(out)  # k4
         return out
 class SCConv(nn.Module):
-    def __init__(self, inplanes, planes,k=3, stride=1, padding=None, dilation=1, groups=1, pooling_r=3, norm_layer=nn.BatchNorm2d):
+    def __init__(self, inplanes, planes, k=3, stride=1, padding=None, dilation=1, groups=1, pooling_r=3, norm_layer=nn.BatchNorm2d):
         super(SCConv, self).__init__()
         padding = autopad(k, padding, dilation)
         self.inplanes, self.planes = inplanes, planes
