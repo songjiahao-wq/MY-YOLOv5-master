@@ -242,6 +242,7 @@ class SRU(nn.Module):
         x_11, x_12 = torch.split(x_1, x_1.size(1) // 2, dim=1)
         x_21, x_22 = torch.split(x_2, x_2.size(1) // 2, dim=1)
         return torch.cat([x_11 + x_22, x_12 + x_21], dim=1)
+
 class CRU(nn.Module):
     '''
     alpha: 0<alpha<1
@@ -281,6 +282,7 @@ class CRU(nn.Module):
         out1, out2 = torch.split(out, out.size(1)//2, dim=1)
         out, out2 = out1 * Y1, out2 * Y2
         return out1+out2
+
 class ScConv(nn.Module):
     def __init__(self,
                  op_channel: int,
@@ -325,8 +327,57 @@ class C3_ScSCConv(C3):
         c_ = int(c2 * e)
         self.m = nn.Sequential(*(Bottleneck_ScSCConv(c_, c_, shortcut, e=1.0) for _ in range(n)))
 
+# Conv------------------------------------------------------------------------------------------------------------------
+class slim_conv_3x3(nn.Module):
 
+    def __init__(self, in_planes, stride, groups, dilation):
+        super(slim_conv_3x3, self).__init__()
+        self.stride = stride
 
+        reduce_1 = 2
+        reduce_2 = 4
+
+        self.conv2_2 = nn.Sequential(nn.Conv2d(in_planes // reduce_1, in_planes // reduce_2, kernel_size=1, bias=False),
+                                     nn.BatchNorm2d(in_planes // reduce_2),
+                                     nn.ReLU(inplace=True),
+                                     nn.Conv2d(in_planes // reduce_2, in_planes // reduce_2, kernel_size=3,
+                                               stride=stride, groups=groups, padding=dilation, bias=False,
+                                               dilation=dilation),
+                                     nn.BatchNorm2d(in_planes // reduce_2))
+
+        self.conv2_1 = nn.Sequential(
+            nn.Conv2d(in_planes // reduce_1, in_planes // reduce_1, kernel_size=3, stride=stride, groups=groups,
+                      padding=dilation, bias=False, dilation=dilation),
+            nn.BatchNorm2d(in_planes // reduce_1))
+
+        self.fc = nn.Sequential(nn.Conv2d(in_planes, in_planes // 32, kernel_size=1, bias=False),
+                                nn.BatchNorm2d(in_planes // 32),
+                                nn.ReLU(inplace=True),
+                                nn.Conv2d(in_planes // 32, in_planes, kernel_size=1),
+                                nn.Sigmoid())
+        self.pool = nn.AdaptiveAvgPool2d(1)
+
+    def forward(self, x):
+        out = x
+        b, c, h, _ = out.size()
+
+        w = self.pool(out)
+        w = self.fc(w)
+        w_f = torch.flip(w, [1])
+
+        out1 = w * out
+        out2 = w_f * out
+        fs1 = torch.split(out1, c // 2, 1)
+        fs2 = torch.split(out2, c // 2, 1)
+
+        ft1 = fs1[0] + fs1[1]
+        ft2 = fs2[0] + fs2[1]
+
+        out2_1 = self.conv2_1(ft1)
+        out2_2 = self.conv2_2(ft2)
+
+        out = torch.cat((out2_1, out2_2), 1)
+        return out
 if __name__ == '__main__':
     x = torch.randn(1, 512, 20, 20)
     model = C3_ScSCConv(512, 512)

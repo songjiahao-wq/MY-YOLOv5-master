@@ -29,7 +29,7 @@ from models.Models.Litemodel import ADD
 from models.Models.Litemodel import ADD,ConvBNReLU, InvertedResidual, MV2Block, MobileViTBlock
 
 from models.Models.Attention.SoftThresholdAttention import *
-from models.Models.Attention.my_attention import PSAModule_s, SPPFC,PSAMix, SpectralAttention, LightweightSPPFA
+from models.Models.my_attention import PSAModule_s, SPPFC,PSAMix, SpectralAttention, LightweightSPPFA
 from models.Models.Attention.MultiScaleAttention import MultiScaleAttention,MultiScaleAttentionCSPA,MultiScaleAttentionCSPB,MultiScaleFrequencyAttention,\
                     FrequencyAttention, MultiScaleFreqAttention,SoftThresholdAttentionResidual
 

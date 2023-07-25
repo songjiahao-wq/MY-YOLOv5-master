@@ -1,13 +1,7 @@
-import torch
-
 from utils.torch_utils import profile
-from models.experimental import MixConv2d
-from models.common import Conv,FEM,RFCAConv
-from models.Models.Attention.my_attention import *
+from models.common import Conv
 from models.Models.Attention.MultiScaleAttention import *
 # from models.ExpCode.FEM import *
-from models.Models.fighting_model.backbone.inceptionNext import inceptionnext_tiny
-from models.Models.fighting_model.attention.SKAttention import SKAttention
 import torch
 import torch.nn as nn
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
