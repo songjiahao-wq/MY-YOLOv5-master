@@ -484,7 +484,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] // args[0] ** 2
         elif m is InceptionNext_small:
             c2 = args[0]
-        ## *** timm-Backbone ***
+        ## *** timm-Tim_Backbone ***
         elif isinstance(m, str):
             t = m
             m = timm.create_model(m, pretrained=args[0], features_only=True)

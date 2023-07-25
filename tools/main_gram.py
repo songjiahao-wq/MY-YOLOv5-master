@@ -3,8 +3,8 @@ import random
 import time
 import argparse
 import numpy as np
-from models.gradcam import YOLOV5GradCAM, YOLOV5GradCAMPP
-from models.yolov5_object_detector import YOLOV5TorchObjectDetector
+from models.Models.gradcam.gradcam import YOLOV5GradCAM, YOLOV5GradCAMPP
+from models.Models.gradcam.yolov5_object_detector import YOLOV5TorchObjectDetector
 import cv2
 #运行的时候需要修改yolo里Detect/foward的输出
 # Change the working directory to 'run/'
