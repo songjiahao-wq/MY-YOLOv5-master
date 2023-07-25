@@ -378,7 +378,133 @@ class slim_conv_3x3(nn.Module):
 
         out = torch.cat((out2_1, out2_2), 1)
         return out
+
+
+class SKConv(nn.Module):
+    def __init__(self, features, M=2, G=32, r=16, stride=1, L=32):
+        """ Constructor
+        Args:
+            features: input channel dimensionality.
+            M: the number of branchs.
+            G: num of convolution groups.
+            r: the ratio for compute d, the length of z.
+            stride: stride, default 1.
+            L: the minimum dim of the vector z in paper, default 32.
+        """
+        super(SKConv, self).__init__()
+        d = max(int(features / r), L)
+        self.M = M
+        self.features = features
+        self.convs = nn.ModuleList([])
+        for i in range(M):
+            self.convs.append(nn.Sequential(
+                nn.Conv2d(features, features, kernel_size=3, stride=stride, padding=1 + i, dilation=1 + i, groups=G,
+                          bias=False),
+                nn.BatchNorm2d(features),
+                nn.ReLU(inplace=True)
+            ))
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Sequential(nn.Conv2d(features, d, kernel_size=1, stride=1, bias=False),
+                                nn.BatchNorm2d(d),
+                                nn.ReLU(inplace=True))
+        self.fcs = nn.ModuleList([])
+        for i in range(M):
+            self.fcs.append(
+                nn.Conv2d(d, features, kernel_size=1, stride=1)
+            )
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+
+        batch_size = x.shape[0]
+
+        feats = [conv(x) for conv in self.convs]
+        feats = torch.cat(feats, dim=1)
+        feats = feats.view(batch_size, self.M, self.features, feats.shape[2], feats.shape[3])
+
+        feats_U = torch.sum(feats, dim=1)
+        feats_S = self.gap(feats_U)
+        feats_Z = self.fc(feats_S)
+
+        attention_vectors = [fc(feats_Z) for fc in self.fcs]
+        attention_vectors = torch.cat(attention_vectors, dim=1)
+        attention_vectors = attention_vectors.view(batch_size, self.M, self.features, 1, 1)
+        attention_vectors = self.softmax(attention_vectors)
+
+        feats_V = torch.sum(feats * attention_vectors, dim=1)
+
+        return feats_V
+
+class slim_conv_SK(nn.Module):
+
+    def __init__(self, in_planes, out_planes,k, stride=1, groups=16, dilation=1, L=32, r=16):
+        super(slim_conv_SK, self).__init__()
+        self.stride = stride
+        self.features = in_planes
+        reduce_1 = 2
+        reduce_2 = 4
+        d = max(int(in_planes / r), L)
+        if in_planes ==out_planes:
+            out_planes =  in_planes // reduce_1
+        else:
+            out_planes = out_planes //2
+        self.conv2_2 = nn.Sequential(nn.Conv2d(in_planes // reduce_1, in_planes // reduce_2, kernel_size=1, bias=False),
+                                     nn.BatchNorm2d(in_planes // reduce_2),
+                                     nn.SiLU(inplace=True),
+                                     nn.Conv2d(in_planes // reduce_2, out_planes, kernel_size=3,
+                                               stride=stride, groups=groups, padding=dilation, bias=False,
+                                               dilation=dilation),
+                                     nn.BatchNorm2d(out_planes))
+
+        self.conv2_1 = nn.Sequential(
+            nn.Conv2d(in_planes // reduce_1, out_planes, kernel_size=3, stride=stride, groups=groups,
+                      padding=dilation, bias=False, dilation=dilation),
+            nn.BatchNorm2d(out_planes))
+
+        self.fc = nn.Sequential(nn.Conv2d(in_planes, d, kernel_size=1, stride=1, bias=False),
+                                nn.BatchNorm2d(d),
+                                nn.SiLU(inplace=True))
+        self.fcs = nn.ModuleList([])
+        for i in range(2):
+            self.fcs.append(
+                nn.Conv2d(d, in_planes, kernel_size=1, stride=1)
+            )
+
+        self.softmax = nn.Softmax(dim=1)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+    def forward(self, x):
+        out = x
+        b, c, h, _ = out.size()
+
+        fea_s = self.gap(out)
+        fea_z = self.fc(fea_s)
+        attention_vectors = [fc(fea_z) for fc in self.fcs]
+        attention_vectors = torch.cat(attention_vectors, dim=1)
+        attention_vectors = attention_vectors.view(b, 2, self.features, 1, 1)
+        attention_vectors = self.softmax(attention_vectors)
+
+        feats = torch.cat((x, x), dim=1)
+        feats = feats.view(b, 2, self.features, feats.shape[2], feats.shape[3])
+
+        out = attention_vectors * feats
+        out1, out2 = torch.split(out, 1, 1)
+        fs1 = torch.split(out1.squeeze(1), c // 2, 1)
+        fs2 = torch.split(out2.squeeze(1), c // 2, 1)
+
+        ft1 = fs1[0] + fs1[1]
+        ft2 = fs2[0] + fs2[1]
+
+        out2_1 = self.conv2_1(ft1)
+        out2_2 = self.conv2_2(ft2)
+
+        out = torch.cat((out2_1, out2_2), 1)
+        return out
+
+
+
+
 if __name__ == '__main__':
-    x = torch.randn(1, 512, 20, 20)
-    model = C3_ScSCConv(512, 512)
+    x = torch.randn(2, 512, 20, 20)
+    model = slim_conv_SK(512, 1024, 2)
     print(model(x).shape)
