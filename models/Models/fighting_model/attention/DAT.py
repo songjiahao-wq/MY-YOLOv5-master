@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import einops
 from timm.models.layers import to_2tuple, trunc_normal_
 from timm.models.layers import DropPath, to_2tuple
-
+# TODO 添加
 class LocalAttention(nn.Module):
 
     def __init__(self, dim=512,dimout=512, heads=4, window_size=4, attn_drop=0.0, proj_drop=0.0):
