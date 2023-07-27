@@ -307,7 +307,7 @@ AlphaIoU理论上与Focal_EIoU没有直接的冲突，但是作者这边没有�
 """
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=False, EIoU=False, WIoU=False, Focal=False,
-             alpha=1, gamma=0.5, scale=False, eps=1e-7):
+              MPDIoU=False, alpha=1, gamma=0.5, scale=False, eps=1e-7):
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
 
     # Get the coordinates of bounding boxes
@@ -334,10 +334,10 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
     # IoU
     # iou = inter / union # ori iou
     iou = torch.pow(inter / (union + eps), alpha)  # alpha iou
-    if CIoU or DIoU or GIoU or EIoU or SIoU or WIoU:
+    if CIoU or DIoU or GIoU or EIoU or SIoU or WIoU or MPDIoU:
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
-        if CIoU or DIoU or EIoU or SIoU or WIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+        if CIoU or DIoU or EIoU or SIoU or WIoU or MPDIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = (cw ** 2 + ch ** 2) ** alpha + eps  # convex diagonal squared
             rho2 = (((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (
                         b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4) ** alpha  # center dist ** 2
@@ -360,6 +360,12 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
                                                                                       gamma)  # Focal_EIou
                 else:
                     return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)  # EIou
+            elif MPDIoU:
+                cw2 = torch.pow(cw ** 2 + eps, alpha)
+                ch2 = torch.pow(ch ** 2 + eps, alpha)
+                d12 = ((b2_x1 - b1_x1) - (b2_y1 - b1_y1)) ** 2
+                d22 = ((b2_x2 - b1_x2) - (b2_y2 - b1_y2)) ** 2
+                return iou - ((d12+d22)/(cw2+ ch2))
             elif SIoU:
                 # SIoU Loss https://arxiv.org/pdf/2205.12740.pdf
                 s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps

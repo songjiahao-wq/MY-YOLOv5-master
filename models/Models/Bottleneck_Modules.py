@@ -501,10 +501,17 @@ class slim_conv_SK(nn.Module):
         out = torch.cat((out2_1, out2_2), 1)
         return out
 
+class flip_Conv(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, r=16):
+        super(flip_Conv, self).__init__()
+
+    def forward(self, x):
+        flip_x = torch.flip(x, [1])
+        return flip_x
 
 
 
 if __name__ == '__main__':
     x = torch.randn(2, 512, 20, 20)
-    model = slim_conv_SK(512, 1024, 2)
+    model = flip_Conv(512, 512)
     print(model(x).shape)
