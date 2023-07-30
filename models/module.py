@@ -9,7 +9,7 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC, \
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
-                SCConv,Bottleneck_DCN, FusionModel, CARAFE
+                SCConv,Bottleneck_DCN, FusionModel, CARAFE, LSKBlock, LSKAttention
 from models.Models.research import LocalFeatureAggregator, LightweightMLP, Concat_bifpn, Concat_bifpn_cat
 
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small

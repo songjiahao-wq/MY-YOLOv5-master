@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _pair
 import torchvision
+from mmcv.cnn import build_norm_layer
+from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 ##### basic ####
 
 def autopad(k, p=None,d=1):  # kernel, padding
@@ -2513,6 +2515,94 @@ class Fusion_Focus(nn.Module):
         x = torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], dim=1)
         return self.conv(x)
 
+# LSKNet ICCV 2023 | 南开大学提出LSKNet：遥感旋转目标检测新SOTA！
+# LSK FFN
+class LSKFFN(nn.Module):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Conv2d(in_features, hidden_features, 1)
+        self.dwconv = DWConv(hidden_features, hidden_features, act=False)
+        self.act = act_layer()
+        self.fc2 = nn.Conv2d(hidden_features, out_features, 1)
+        self.drop = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.dwconv(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+class LSKblock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.conv0 = nn.Conv2d(dim, dim, 5, padding=2, groups=dim)
+        self.conv_spatial = nn.Conv2d(dim, dim, 7, stride=1, padding=9, groups=dim, dilation=3)
+        self.conv1 = nn.Conv2d(dim, dim // 2, 1)
+        self.conv2 = nn.Conv2d(dim, dim // 2, 1)
+        self.conv_squeeze = nn.Conv2d(2, 2, 7, padding=3)
+        self.conv = nn.Conv2d(dim // 2, dim, 1)
+
+    def forward(self, x):
+        attn1 = self.conv0(x)
+        attn2 = self.conv_spatial(attn1)
+
+        attn1 = self.conv1(attn1)
+        attn2 = self.conv2(attn2)
+
+        attn = torch.cat([attn1, attn2], dim=1)
+        avg_attn = torch.mean(attn, dim=1, keepdim=True)
+        max_attn, _ = torch.max(attn, dim=1, keepdim=True)
+        agg = torch.cat([avg_attn, max_attn], dim=1)
+        sig = self.conv_squeeze(agg).sigmoid()
+        attn = attn1 * sig[:, 0, :, :].unsqueeze(1) + attn2 * sig[:, 1, :, :].unsqueeze(1)
+        attn = self.conv(attn)
+        return x * attn
+# LSK Selection
+class LSKAttention(nn.Module):
+    def __init__(self, d_model, d_modelout= 512):
+        super().__init__()
+
+        self.proj_1 = nn.Conv2d(d_model, d_model, 1)
+        self.activation = nn.GELU()
+        self.spatial_gating_unit = LSKblock(d_model)
+        self.proj_2 = nn.Conv2d(d_model, d_model, 1)
+
+    def forward(self, x):
+        shorcut = x.clone()
+        x = self.proj_1(x)
+        x = self.activation(x)
+        x = self.spatial_gating_unit(x)
+        x = self.proj_2(x)
+        x = x + shorcut
+        return x
+
+class LSKBlock(nn.Module):
+    def __init__(self, dim, dimout, mlp_ratio=4., drop=0.,drop_path=0., act_layer=nn.GELU, norm_cfg=None):
+        super().__init__()
+        if norm_cfg:
+            self.norm1 = build_norm_layer(norm_cfg, dim)[1]
+            self.norm2 = build_norm_layer(norm_cfg, dim)[1]
+        else:
+            self.norm1 = nn.BatchNorm2d(dim)
+            self.norm2 = nn.BatchNorm2d(dim)
+        self.attn = LSKAttention(dim)
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = LSKFFN(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        layer_scale_init_value = 1e-2
+        self.layer_scale_1 = nn.Parameter(
+            layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+        self.layer_scale_2 = nn.Parameter(
+            layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+
+    def forward(self, x):
+        x = x + self.drop_path(self.layer_scale_1.unsqueeze(-1).unsqueeze(-1) * self.attn(self.norm1(x)))
+        x = x + self.drop_path(self.layer_scale_2.unsqueeze(-1).unsqueeze(-1) * self.mlp(self.norm2(x)))
+        return x
 
 if __name__ =="__main__":
     input = torch.randn(1,64,40,40)
