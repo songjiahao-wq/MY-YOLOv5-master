@@ -33,6 +33,7 @@ import torch.nn as nn
 import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
+import shutil
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -89,7 +90,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if not evolve:
         yaml_save(save_dir / 'hyp.yaml', hyp)
         yaml_save(save_dir / 'opt.yaml', vars(opt))
-
+        # Save run model
+        cfg.replace('\\', '/')
+        shutil.copy(cfg, save_dir/cfg.split('/')[-1])
     # Loggers
     data_dict = None
     if RANK in {-1, 0}:
