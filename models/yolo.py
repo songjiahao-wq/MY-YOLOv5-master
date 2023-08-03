@@ -211,6 +211,8 @@ class BaseModel(nn.Module):
                     re_mlp[0] = fuse_conv_and_bn(m.mlp[0], m.mlp[1])
                     # delattr(m, 'se')
                     m.mlp = re_mlp
+            if hasattr(m, ('RepGhostModule')):
+                m.switch_to_deploy()
         self.info()
         return self
 
@@ -446,7 +448,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, c2, *args[1:]]
-
+        elif m is RepGhostBottleneck:
+            c1, mid, c2 = ch[f],args[1], args[2]
+            mid = make_divisible(mid * gw, 4)
+            c2 = make_divisible(c2 * gw, 4)
+            args = [c1, mid, c2, *args[3:]]
         elif m is GGhostRegNet:
             widths.append(args[0])
             if args[1] != 0:
@@ -531,7 +537,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../models/LSKNet/yolov5s-LSKblcok.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5s-repghost.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
