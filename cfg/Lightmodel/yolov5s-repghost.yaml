@@ -2,7 +2,7 @@
 
 # YOLOv5s-repghost summary: 620 layers, 3743705 parameters, 3743705 gradients, 7.1 GFLOPs
 #Fusing layers...
-#YOLOv5s-repghost summary: 601 layers, 4071721 parameters, 4071721 gradients, 6.82 GFLOPs
+# YOLOv5s-repghost summary: 593 layers, 3738921 parameters, 3738921 gradients, 7.1 GFLOPs
 
 # Parameters
 nc: 80  # number of classes
