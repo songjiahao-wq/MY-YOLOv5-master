@@ -6,7 +6,7 @@ import os.path
 import cv2
 import numpy as np
 import glob
-def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=False, scaleFill=False, scaleup=True, stride=32):
     # Resize and pad image while meeting stride-multiple constraints
     shape = im.shape[:2]  # current shape [height, width]
     if isinstance(new_shape, int):
@@ -40,9 +40,9 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return im, ratio, (dw, dh)
 # 图片源路径
-img_path = r'D:\my_job\code\xianyu\yolov5-master\data\images/*.jpg'
+img_path = r'D:\xian_yu\xianyun_lunwen\x guang jian ce\xf_Xray\xf_Xray\images/*.jpg'
 # 复制文件总路径
-src_root = r'D:\my_job\code\xianyu\yolov5-master\data\images2/'
+src_root = r'D:\xian_yu\xianyun_lunwen\x guang jian ce\xf_Xray\xf_Xray\images640_1/'
 if not os.path.exists(src_root):
     os.makedirs(src_root)
 img_list = glob.glob(img_path)
