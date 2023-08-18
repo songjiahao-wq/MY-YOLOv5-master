@@ -178,7 +178,7 @@ class Bottleneck_ATT(nn.Module):
         self.add = shortcut and c1 == c2
         has_ATT = use_ATT is not None and use_ATT > 0.
         if has_ATT:
-            self.ATT = BiLevelRoutingAttention(c2,c2)
+            self.ATT = BiLevelRoutingAttention(c2, c2)
             # self.ATT = MultiScaleAttention(c_, c_, 1)
             # self.ATT = SoftThresholdAttentionResidual(c_)
             # self.ATT = ECA(c2, c2)
@@ -5233,9 +5233,10 @@ class EMA_ATT(nn.Module):
         return  self.conv(ATT_weight * G_identity)
 
 class EMA(nn.Module):
-    def __init__(self, channels, c2=None, factor=32):
+    def __init__(self, channels, c2=None, k=3, s=None, factor=32):
         super(EMA, self).__init__()
         self.groups = factor
+        self.s =s
         assert channels // self.groups > 0
         self.softmax = nn.Softmax(-1)
         self.agp = nn.AdaptiveAvgPool2d((1, 1))
@@ -5244,7 +5245,7 @@ class EMA(nn.Module):
         self.gn = nn.GroupNorm(channels // self.groups, channels // self.groups)
         self.conv1x1 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=1, stride=1, padding=0)
         self.conv3x3 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=3, stride=1, padding=1)
-
+        self.conv = Conv(channels, c2, k, s)
     def forward(self, x):
         b, c, h, w = x.size()
         group_x = x.reshape(b * self.groups, -1, h, w)  # b*g,c//g,h,w
@@ -5259,8 +5260,10 @@ class EMA(nn.Module):
         x21 = self.softmax(self.agp(x2).reshape(b * self.groups, -1, 1).permute(0, 2, 1))
         x22 = x1.reshape(b * self.groups, c // self.groups, -1)  # b*g, c//g, hw
         weights = (torch.matmul(x11, x12) + torch.matmul(x21, x22)).reshape(b * self.groups, 1, h, w)
-        return (group_x * weights.sigmoid()).reshape(b, c, h, w)
-
+        if self.s==None:
+            return self.conv((group_x * weights.sigmoid()).reshape(b, c, h, w))
+        else:
+            return self.conv((group_x * weights.sigmoid()).reshape(b, c, h, w))
 class ema_1(nn.Module):
     def __init__(self,c1, c2, k ,s,factor = 4):
         super().__init__()
