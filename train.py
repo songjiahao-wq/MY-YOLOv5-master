@@ -90,9 +90,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if not evolve:
         yaml_save(save_dir / 'hyp.yaml', hyp)
         yaml_save(save_dir / 'opt.yaml', vars(opt))
-        # Save run model
-        cfg.replace('\\', '/')
-        shutil.copy(cfg, save_dir/cfg.split('/')[-1])
+        if not resume:
+            # Save run model
+            cfg.replace('\\', '/')
+            shutil.copy(cfg, save_dir/cfg.split('/')[-1])
     # Loggers
     data_dict = None
     if RANK in {-1, 0}:
