@@ -6,6 +6,17 @@ import os.path
 import cv2
 import numpy as np
 import glob
+import math
+
+def load_image(im, img_size=640, augment=False):
+    # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
+    assert im is not None, f'Image Not Found'
+    h0, w0 = im.shape[:2]  # orig hw
+    r = img_size / max(h0, w0)  # ratio
+    if r != 1:  # if sizes are not equal
+        interp = cv2.INTER_LINEAR if (augment or r > 1) else cv2.INTER_AREA
+        im = cv2.resize(im, (math.ceil(w0 * r), math.ceil(h0 * r)), interpolation=interp)
+    return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=False, scaleFill=False, scaleup=True, stride=32):
     # Resize and pad image while meeting stride-multiple constraints
     shape = im.shape[:2]  # current shape [height, width]
@@ -40,9 +51,9 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=False, scale
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return im, ratio, (dw, dh)
 # 图片源路径
-img_path = r'D:\xian_yu\xianyun_lunwen\x guang jian ce\xf_Xray\xf_Xray\images/*.jpg'
+img_path = r'F:\yolov5-master-Insulator\Insulator_data\images\train_5s/*.jpg'
 # 复制文件总路径
-src_root = r'D:\xian_yu\xianyun_lunwen\x guang jian ce\xf_Xray\xf_Xray\images640_1/'
+src_root = r'F:\yolov5-master-Insulator\Insulator_data\images\train/'
 if not os.path.exists(src_root):
     os.makedirs(src_root)
 img_list = glob.glob(img_path)
@@ -52,7 +63,7 @@ for img_name in img_list:
     print(img_number)
     img = cv2.imread(img_name)
     print(img.shape)
-    img2 = letterbox(img)[0]
+    img2 = load_image(img)[0]
     print(img2.shape)
     # print(src_root+os.path.basename(img_name))
     cv2.imwrite(src_root+os.path.basename(img_name),img2)
