@@ -5166,7 +5166,7 @@ class DepthSepConv(nn.Module):
     def forward(self, x):
         y = self.dw_sp(x)
         return y
-# 特征增强模块
+# 特征增强模块 todo
 class CAM(nn.Module):
     def __init__(self, c1, c2):
         super(CAM, self).__init__()
@@ -5292,7 +5292,7 @@ class ema_1(nn.Module):
             return (group_x * (x1+x2).sigmoid()).reshape(b, c, h, w)
         else:
             return self.conv((group_x * (x1 + x2).sigmoid()).reshape(b, c, h, w))
-
+# todo
 class ema_2(nn.Module):
     #NEU all        360        823      0.703      0.735      0.753      0.404
     def __init__(self,c1, c2, k , s, factor = 8):
@@ -5507,7 +5507,7 @@ class DilateAttention(nn.Module):
         v = self.unfold(v).reshape([B, d//self.head_dim, self.head_dim, self.kernel_size*self.kernel_size, H*W]).permute(0, 1, 4, 3, 2)  # B,h,N,k*k,d
         x = (attn @ v).transpose(1, 2).reshape(B, H, W, d)
         return x
-
+# todo
 class MultiDilatelocalAttention(nn.Module):
     "Implementation of Dilate-attention"
 

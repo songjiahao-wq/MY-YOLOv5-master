@@ -434,7 +434,7 @@ class SKConv(nn.Module):
         feats_V = torch.sum(feats * attention_vectors, dim=1)
 
         return feats_V
-
+# todo https://www.zhihu.com/question/393850908
 class slim_conv_SK(nn.Module):
 
     def __init__(self, in_planes, out_planes,k, stride=1, groups=16, dilation=1, L=32, r=16):
