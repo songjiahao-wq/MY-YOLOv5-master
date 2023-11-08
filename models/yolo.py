@@ -411,14 +411,14 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv,
         DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
         SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
-        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, ema_1, ema_2, C3_ATT,
+        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
         C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:# 添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR,CTR3, C3Ghost, C3x,
+            if m in {BottleneckCSP, C3, C3TR, CTR3, C3Ghost, C3x,
                      C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2, C3_ODConv, C3_Res2_2, C3_CoordConv,
                      C3_DSConv, C3_CondConv, C3_DynamicConv, C3_vanillaBlock, C3_2, C3_ATT,
                      C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2}:#添加模块
@@ -434,15 +434,19 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                     # args[6] = math.gcd(c1, c2)
 
         #"""**************add Attention***************"""
-        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, PSAModule_s, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
+        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
                    CAM, EVCBlock, EMA_ATT, SCConv_exp1, SCConv_exp2, SCConv_exp3, LocalAttention,
-                LSKBlock, LSKAttention,FocusedLinearAttention, deformable_LKA_Attention, deformable_LKA_Attention_experimental}:
+                LSKBlock, LSKAttention, FocusedLinearAttention }:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
-
             args = [c1, c2, *args[1:]]
-
+        #"""**************MY Attention***************"""
+        elif m in {deformable_LKA_Attention_experimental, deformable_LKA_Attention, PSAModule_s, ema_1, ema_2}:
+            c1, c2 = ch[f], args[0]
+            if c2 != no:  # if not output
+                c2 = make_divisible(c2 * gw, 8)
+            args = [c1, c2, *args[1:]]
         elif m in {slim_conv_SK}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
