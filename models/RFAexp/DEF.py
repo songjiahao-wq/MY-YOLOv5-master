@@ -1,7 +1,7 @@
 from mmcv.ops import DeformConv2d
 import torch.nn as nn
 from models.module import *
-
+import torch
 
 class h_sigmoid(nn.Module):
     def __init__(self, inplace=True):

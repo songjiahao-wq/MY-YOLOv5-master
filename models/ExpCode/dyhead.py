@@ -262,9 +262,6 @@ class Detect_dyhead(nn.Module):
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
                 logits = x[i][..., 5:]                 # 修改---2
-
-
-
                 xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
                 xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
                 wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh

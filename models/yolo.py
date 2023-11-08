@@ -405,11 +405,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC, ASPP,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual, MobileNet_Block, DepthSepConv,
         ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed, BasicStage, PatchMerging,
-            MV2Block, MobileViTBlock,
+            MV2Block, MobileViTBlock, C3Ghost2,
         CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
         C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
         RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv,
-        DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv,
+        DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
         SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
         DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, ema_1, ema_2, C3_ATT,
         C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:# 添加模块
@@ -421,7 +421,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if m in {BottleneckCSP, C3, C3TR,CTR3, C3Ghost, C3x,
                      C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2, C3_ODConv, C3_Res2_2, C3_CoordConv,
                      C3_DSConv, C3_CondConv, C3_DynamicConv, C3_vanillaBlock, C3_2, C3_ATT,
-                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:#添加模块
+                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2}:#添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
 
@@ -436,7 +436,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         #"""**************add Attention***************"""
         elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, PSAModule_s, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
                    CAM, EVCBlock, EMA_ATT, SCConv_exp1, SCConv_exp2, SCConv_exp3, LocalAttention,
-                LSKBlock, LSKAttention}:
+                LSKBlock, LSKAttention,FocusedLinearAttention, deformable_LKA_Attention, deformable_LKA_Attention_experimental}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -537,9 +537,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5s-repghost.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-DySnakeConv.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
     parser.add_argument('--line-profile', action='store_true', default=True, help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')

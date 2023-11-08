@@ -40,6 +40,7 @@ from add.cv_attention.CBAM import CBAMBlock, CBAMBlock2
 from models.Models.fighting_model.conv.ODConv import ODConv2d
 from models.Models.fighting_model.conv.CondConv import CondConv
 from models.Models.fighting_model.conv.DynamicConv import DynamicConv
+from models.Models.fighting_model.conv.DySnakeConv import DySnakeConv, DySnakeConv2
 
 from models.Models.fighting_model.attention.SEAttention import SEAttention  # se = SEAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.SKAttention import SKAttention  # se = SKAttention(channel=512,reduction=8)
@@ -52,6 +53,8 @@ from models.Models.fighting_model.attention.ShuffleAttention import ShuffleAtten
 from models.Models.fighting_model.attention.SGE import SpatialGroupEnhance  # sge = SpatialGroupEnhance(groups=8)
 from models.Models.fighting_model.attention.A2Atttention import DoubleAttention  # a2 = DoubleAttention(512,128,128,True)
 from models.Models.fighting_model.attention.Biformer import BiLevelRoutingAttention   # a2 = DoubleAttention(512,128,128,True)
+from models.Models.fighting_model.attention.Focused_Linear_Attention import FocusedLinearAttention
+from models.Models.fighting_model.attention.D_LKA_Attention import deformable_LKA_Attention,deformable_LKA_Attention_experimental
 from models.ExpCode.dyhead import DyHeadBlock, Detect_dyhead
 # exp--------------------------------------------------------------------------------------------------------------------
 from models.ExpCode.SCCONV_exp import SCConv_exp1,SCConv_exp2,SCConv_exp3
