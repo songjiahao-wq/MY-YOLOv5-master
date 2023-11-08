@@ -408,7 +408,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             MV2Block, MobileViTBlock, C3Ghost2,
         CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
         C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
-        RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, MultiScaleCAConv, DyCAConv, NonCAConv,
+        RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, DyCAConv, NonCAConv,
         DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
         SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
         DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
@@ -442,7 +442,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, c2, *args[1:]]
         #"""**************MY Attention***************"""
-        elif m in {deformable_LKA_Attention_experimental, deformable_LKA_Attention, PSAModule_s, ema_1, ema_2}:
+        elif m in {deformable_LKA_Attention_experimental, deformable_LKA_Attention, PSAModule_s, ema_1, ema_2, MultiScaleCAConv}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
