@@ -80,7 +80,7 @@ class Detect(nn.Module):
     #     return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
     def forward(self, x):
         z = []  # inference output
-        logits_ = []               # 修改---1
+        logits_ = []  # 修改---1
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -90,7 +90,7 @@ class Detect(nn.Module):
                 if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
-                logits = x[i][..., 5:]                 # 修改---2
+                logits = x[i][..., 5:]  # 修改---2
 
                 if isinstance(self, Segment):  # (boxes + masks)
                     xy, wh, conf, mask = x[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
@@ -104,10 +104,11 @@ class Detect(nn.Module):
                     y = torch.cat((xy, wh, conf), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no))
 
-                logits_.append(logits.view(bs, -1, self.no - 5))     # 修改---3
+                logits_.append(logits.view(bs, -1, self.no - 5))  # 修改---3
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         # return x if self.training else (torch.cat(z, 1), torch.cat(logits_, 1), x)  # 修改---4
+
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype
@@ -149,7 +150,7 @@ class BaseModel(nn.Module):
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self.GFLOPS = self._profile_one_layer(m, x, dt)
-            if hasattr(m, 'backbone'): # 判断m具有backbone的属性
+            if hasattr(m, 'backbone'):  # 判断m具有backbone的属性
                 x = m(x)
                 if len(x) == 4:
                     x.insert(0, None)
@@ -170,7 +171,7 @@ class BaseModel(nn.Module):
 
     def _profile_one_layer(self, m, x, dt):
         c = m == self.model[-1]  # is final layer, copy input as inplace fix
-        o = thop.profile(m, inputs=(x.copy() if c else x, ), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
+        o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
         t = time_sync()
         for _ in range(10):
             m(x.copy() if c else x)
@@ -400,28 +401,31 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
-                Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3f, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x, C3CA,
+            Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
+            BottleneckCSP, C3, C3f, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x, C3CA,
             CA, C3ECA, C3CAAM, stem, MBConvBlock, FusedMBConv, MBConv, SPPCSPC, SPPA_CBAM, SE_SPPFCSPC, ASPP,
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual, MobileNet_Block, DepthSepConv,
-        ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed, BasicStage, PatchMerging,
+            ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed, BasicStage,
+            PatchMerging,
             MV2Block, MobileViTBlock, C3Ghost2,
-        CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f, SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
-        C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
-        RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, DyCAConv, NonCAConv,
-        DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
-        SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
-        DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
-        C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:# 添加模块
+            CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f,
+            SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
+            C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
+            RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, DyCAConv, NonCAConv,
+            DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
+            SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
+            DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
+            C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:  # 添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR, CTR3, C3Ghost, C3x,
-                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2, C3_ODConv, C3_Res2_2, C3_CoordConv,
+                     C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2,
+                     C3_ODConv, C3_Res2_2, C3_CoordConv,
                      C3_DSConv, C3_CondConv, C3_DynamicConv, C3_vanillaBlock, C3_2, C3_ATT,
-                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2}:#添加模块
+                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2}:  # 添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
 
@@ -433,16 +437,18 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                     args[6] = make_divisible(args[6] * gw, 8)
                     # args[6] = math.gcd(c1, c2)
 
-        #"""**************add Attention***************"""
-        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, SPPFC, CustomNetwork, SpectralAttention, BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
+        # """**************add Attention***************"""
+        elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, SPPFC, CustomNetwork, SpectralAttention,
+                   BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
                    CAM, EVCBlock, EMA_ATT, SCConv_exp1, SCConv_exp2, SCConv_exp3, LocalAttention,
-                LSKBlock, LSKAttention, FocusedLinearAttention }:
+                   LSKBlock, LSKAttention, FocusedLinearAttention}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, c2, *args[1:]]
-        #"""**************MY Attention***************"""
-        elif m in {deformable_LKA_Attention_experimental, deformable_LKA_Attention, PSAModule_s, ema_1, ema_2, MultiScaleCAConv}:
+        # """**************MY Attention***************"""
+        elif m in {deformable_LKA_Attention_experimental, deformable_LKA_Attention, PSAModule_s, ema_1, ema_2,
+                   MultiScaleCAConv}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -453,7 +459,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, c2, *args[1:]]
         elif m is RepGhostBottleneck:
-            c1, mid, c2 = ch[f],args[1], args[2]
+            c1, mid, c2 = ch[f], args[1], args[2]
             mid = make_divisible(mid * gw, 4)
             c2 = make_divisible(c2 * gw, 4)
             args = [c1, mid, c2, *args[3:]]
@@ -470,11 +476,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is CARAFE:
             c2 = ch[f]
             args = [c2, *args]
-        elif m in { SubPixelConvolution, SubPixelConvolution_s}:
+        elif m in {SubPixelConvolution, SubPixelConvolution_s}:
             c2 = ch[f]
             args = [c2, *args]
         elif m is FusionModel:
-            c2 = args[1]//2
+            c2 = args[1] // 2
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
@@ -525,7 +531,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         m_.i, m_.f, m_.type, m_.np = i + 4 if is_backbone else i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
         ## *** timm-addition ***
-        save.extend(x % (i + 4 if is_backbone else i) for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
+        save.extend(x % (i + 4 if is_backbone else i) for x in ([f] if isinstance(f, int) else f) if
+                    x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
             ch = []
@@ -541,7 +548,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-DySnakeConv.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-DySnakeConv.yaml',
+                        help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
