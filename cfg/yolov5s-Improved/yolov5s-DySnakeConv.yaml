@@ -1,7 +1,5 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
-
-
-
+# 加入动态蛇形卷积
 # Parameters
 nc: 80  # number of classes
 depth_multiple: 0.33  # model depth multiple
