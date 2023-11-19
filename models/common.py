@@ -27,6 +27,7 @@ from torch.cuda import amp
 
 from models.experimental import *
 from models.module import *
+
 # Import 'ultralytics' package or install if if missing
 try:
     import ultralytics

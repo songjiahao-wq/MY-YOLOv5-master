@@ -9,7 +9,7 @@ from models.Models.yolovii import Conv, RobustConv, RobustConv2, GhostConv, RepC
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC, \
                  SwinTransformerBlock, \
                  SwinTransformer2Block, \
-                SCConv,Bottleneck_DCN, FusionModel, CARAFE, LSKBlock, LSKAttention
+                SCConv,Bottleneck_DCN, FusionModel, CARAFE, LSKBlock, LSKAttention, DANetHead
 from models.Models.research import LocalFeatureAggregator, LightweightMLP, Concat_bifpn, Concat_bifpn_cat
 
 from models.Models.fighting_model.backbone.inceptionNext import InceptionNext_small
@@ -35,7 +35,6 @@ from models.Models.Attention.MultiScaleAttention import MultiScaleAttention, Mul
 
 from add.cv_attention.Acmix import ACmix
 from add.cv_attention.Fcanet import MultiSpectralAttentionLayer
-from add.cv_attention.CBAM import CBAMBlock, CBAMBlock2
 
 from models.Models.fighting_model.conv.ODConv import ODConv2d
 from models.Models.fighting_model.conv.CondConv import CondConv

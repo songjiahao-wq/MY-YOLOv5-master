@@ -7,7 +7,6 @@ Usage:
 """
 
 import argparse
-import contextlib
 import os
 import platform
 import sys
@@ -20,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 if platform.system() != 'Windows':
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
 
 from models.common import *  # noqa
 from models.experimental import *  # noqa
@@ -409,7 +409,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             PatchMerging,
             MV2Block, MobileViTBlock, C3Ghost2,
             CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f,
-            SPPF_ATT, FEM, CBAMBlock2, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
+            SPPF_ATT, FEM, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
             C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
             RFCAConv, RFCAConv2, CAConv, CAMConv, CBAMConv, NSTConv, GAMConv, PSAConv, DyCAConv, NonCAConv,
             DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
@@ -441,7 +441,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m in {SEAttention, GAMAttention, ECA, ACmix, CBAM, SPPFC, CustomNetwork, SpectralAttention,
                    BiLevelRoutingAttention, LightweightMLP, LocalFeatureAggregator,
                    CAM, EVCBlock, EMA_ATT, SCConv_exp1, SCConv_exp2, SCConv_exp3, LocalAttention,
-                   LSKBlock, LSKAttention, FocusedLinearAttention}:
+                   LSKBlock, LSKAttention, FocusedLinearAttention, DANetHead}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -548,7 +548,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s-DySnakeConv.yaml',
+    parser.add_argument('--cfg', type=str, default=r'../models/yolov5s-DABlock.yaml',
                         help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
