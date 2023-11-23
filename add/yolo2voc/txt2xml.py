@@ -12,8 +12,9 @@ import cv2
 # txt生成xml
 def txt_to_xml(txt_path, img_path, xml_path):
     # 1.字典对标签中的类别进行转换
-    dict = {'0': "person",#1 类别
-            # '1': "hole",
+    dict = {'0': "Platelets",#1 类别
+            '1': "RBC",
+            '2':"'WBC']"
 
             }
     # 2.找到txt标签文件夹
@@ -33,8 +34,8 @@ def txt_to_xml(txt_path, img_path, xml_path):
         # 读取所有内容
         txtList = txtFile.readlines()
         # 读取图片名称
-        img_name = name.split(".")[0]
-        print(img_path + img_name + ".png")
+        img_name = os.path.splitext(name)[0]
+        print(img_path + img_name + ".jpg")
         pic = cv2.imread(img_path + img_name + ".jpg")
         # 获取图像大小信息
         print(pic)
@@ -112,6 +113,6 @@ def txt_to_xml(txt_path, img_path, xml_path):
 
 
 # 修改成自己的文件夹 注意文件夹最后要加上/
-txt_to_xml(r"D:\songjiahao\DATA\crowhuman\labels\Train/",#2
-           r"D:\songjiahao\DATA\crowhuman\images\Train/",#3
-           r"D:/songjiahao/DATA/Crowdhuman151/xml/train/")#4
+txt_to_xml(r"D:\xian_yu\daipao\test\labels/",#2
+           r"D:\xian_yu\daipao\test\images/",#3
+           r"D:\xian_yu\daipao\test/annotions/")#4
