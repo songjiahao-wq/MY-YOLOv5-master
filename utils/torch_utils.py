@@ -22,7 +22,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from utils.general import LOGGER, check_version, colorstr, file_date, git_describe
 from models.Models.research import Concat_bifpn
-from models.common import BiFPN_Add3, BiFPN_Add2
 from models.Models.fighting_model.GAM import GAM
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
@@ -361,8 +360,10 @@ class Lion(Optimizer):
 
         return loss
 def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
+    from models import BiFPN_Add3, BiFPN_Add2
     # YOLOv5 3-param group optimizer: 0) weights with decay, 1) weights no decay, 2) biases no decay
     g = [], [], []  # optimizer parameter groups
+    pg1 = []
     bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
     for v in model.modules():
         for p_name, p in v.named_parameters(recurse=0):
@@ -400,9 +401,11 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
         raise NotImplementedError(f'Optimizer {name} not implemented.')
 
     optimizer.add_param_group({'params': g[0], 'weight_decay': decay})  # add g0 with weight_decay
+    optimizer.add_param_group({'params': pg1[0], 'weight_decay': decay})  # add pg1 with weight_decay
     optimizer.add_param_group({'params': g[1], 'weight_decay': 0.0})  # add g1 (BatchNorm2d weights)
     LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}) with parameter groups "
-                f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias')
+                f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias'
+                f'{len(pg1[1])} weight(decay=0.0), {len(pg1[0])} weight(decay={decay}), {len(pg1[2])} bias')
     return optimizer
 
 

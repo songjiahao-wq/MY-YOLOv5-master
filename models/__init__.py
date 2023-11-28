@@ -1,4 +1,4 @@
-from .common import Conv, autopad, DWConv, Bottleneck, C3, Bottleneck_ATT, C3_ATT
+from .common import Conv, autopad, DWConv, Bottleneck, C3, Bottleneck_ATT, C3_ATT,BiFPN_Add3,BiFPN_Add2
 
 
 
