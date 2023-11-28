@@ -22,6 +22,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from utils.general import LOGGER, check_version, colorstr, file_date, git_describe
 from models.Models.research import Concat_bifpn
+from models.common import BiFPN_Add3, BiFPN_Add2
 from models.Models.fighting_model.GAM import GAM
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
@@ -371,6 +372,15 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
                 g[1].append(p)
             elif isinstance(v, Concat_bifpn) and hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
                 g[0].append(v.w)
+            # add bifpn
+            elif isinstance(v, BiFPN_Add3) and hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
+                pg1.append(v.w)
+            elif isinstance(v, BiFPN_Add2) and hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
+                pg1.append(v.w)
+            elif isinstance(v, Concat_bifpn) and hasattr(v, 'w1_weight') and isinstance(v.w1_weight, nn.Parameter):
+                pg1.append(v.w1_weight)
+            elif isinstance(v, Concat_bifpn) and hasattr(v, 'w1_weight') and isinstance(v.w1_weight, nn.Parameter):
+                pg1.append(v.w2_weight)
             else:
                 g[0].append(p)  # weight (with decay)
 
