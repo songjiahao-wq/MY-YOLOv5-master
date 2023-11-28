@@ -415,7 +415,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
             SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
             DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
-            C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv}:  # 添加模块
+            C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3_DySnake}:  # 添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
