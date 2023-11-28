@@ -371,8 +371,6 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
                 g[2].append(p)
             elif p_name == 'weight' and isinstance(v, bn):  # weight (no decay)
                 g[1].append(p)
-            elif isinstance(v, Concat_bifpn) and hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
-                g[0].append(v.w)
             # add bifpn
             elif isinstance(v, BiFPN_Add3) and hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
                 pg1.append(v.w)
@@ -401,11 +399,9 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
         raise NotImplementedError(f'Optimizer {name} not implemented.')
 
     optimizer.add_param_group({'params': g[0], 'weight_decay': decay})  # add g0 with weight_decay
-    optimizer.add_param_group({'params': pg1[0], 'weight_decay': decay})  # add pg1 with weight_decay
     optimizer.add_param_group({'params': g[1], 'weight_decay': 0.0})  # add g1 (BatchNorm2d weights)
     LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}) with parameter groups "
-                f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias'
-                f'{len(pg1[1])} weight(decay=0.0), {len(pg1[0])} weight(decay={decay}), {len(pg1[2])} bias')
+                f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias')
     return optimizer
 
 
