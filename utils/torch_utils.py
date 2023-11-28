@@ -360,7 +360,7 @@ class Lion(Optimizer):
 
         return loss
 def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
-    from models import BiFPN_Add3, BiFPN_Add2
+    from models.common import BiFPN_Add3, BiFPN_Add2
     # YOLOv5 3-param group optimizer: 0) weights with decay, 1) weights no decay, 2) biases no decay
     g = [], [], []  # optimizer parameter groups
     pg1 = []
