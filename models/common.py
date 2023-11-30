@@ -5626,9 +5626,143 @@ class MultiDilatelocalAttention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
+#GhostBottleneckV2-sim
+class SimAM_sim(torch.nn.Module):
+    def __init__(self, e_lambda=1e-4):
+        super(SimAM_sim, self).__init__()
+
+        self.activaton = nn.Sigmoid()
+        self.e_lambda = e_lambda
+
+    def __repr__(self):
+        s = self.__class__.__name__ + '('
+        s += ('lambda=%f)' % self.e_lambda)
+        return s
+
+    @staticmethod
+    def get_module_name():
+        return "simam"
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+
+        n = w * h - 1
+
+        x_minus_mu_square = (x - x.mean(dim=[2, 3], keepdim=True)).pow(2)
+        y = x_minus_mu_square / (4 * (x_minus_mu_square.sum(dim=[2, 3], keepdim=True) / n + self.e_lambda)) + 0.5
+
+        return self.activaton(y)
+class GhostModuleV2_sim(nn.Module):
+    def __init__(self, inp, oup, kernel_size=1, ratio=2, dw_size=3, stride=1, relu=True, mode=None, args=None):
+        super(GhostModuleV2_sim, self).__init__()
+        self.mode = mode
+        self.gate_fn = nn.Sigmoid()
+
+        if self.mode in ['original']:
+            self.oup = oup
+            init_channels = math.ceil(oup / ratio)
+            new_channels = init_channels * (ratio - 1)
+            self.primary_conv = nn.Sequential(
+                nn.Conv2d(inp, init_channels, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(init_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.cheap_operation = nn.Sequential(
+                nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size // 2, groups=init_channels, bias=False),
+                nn.BatchNorm2d(new_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+        elif self.mode in ['attn']:
+            self.oup = oup
+            init_channels = math.ceil(oup / ratio)
+            new_channels = init_channels * (ratio - 1)
+            self.primary_conv = nn.Sequential(
+                nn.Conv2d(inp, init_channels, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(init_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.cheap_operation = nn.Sequential(
+                nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size // 2, groups=init_channels, bias=False),
+                nn.BatchNorm2d(new_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.short_conv = nn.Sequential(
+                nn.Conv2d(inp, oup, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(oup),
+                nn.Conv2d(oup, oup, kernel_size=(1, 5), stride=1, padding=(0, 2), groups=oup, bias=False),
+                nn.BatchNorm2d(oup),
+                nn.Conv2d(oup, oup, kernel_size=(5, 1), stride=1, padding=(2, 0), groups=oup, bias=False),
+                nn.BatchNorm2d(oup),
+            )
+        self.att = SimAM_sim()
+    def forward(self, x):
+        if self.mode in ['original']:
+            x1 = self.primary_conv(x)
+            x2 = self.cheap_operation(x1)
+            out = torch.cat([x1, x2], dim=1)
+            return out[:, :self.oup, :, :]
+        elif self.mode in ['attn']:
+            x1 = self.primary_conv(x)
+            x2 = self.cheap_operation(x1)
+            out = torch.cat([x1, x2], dim=1)
+            return out[:, :self.oup, :, :] * self.att(x)
+
+class GhostBottleneckV2_sim(nn.Module):
+
+    def __init__(self, in_chs, out_chs, mid_chs, dw_kernel_size=3,
+                 stride=1, se_ratio=0.,  layer_id=1, act_layer=nn.ReLU, args=None):
+        super(GhostBottleneckV2_sim, self).__init__()
+        has_se = se_ratio is not None and se_ratio > 0.
+        self.stride = stride
+
+        # Point-wise expansion
+        if layer_id <= 1:
+            self.ghost1 = GhostModuleV2_sim(in_chs, mid_chs, relu=True, mode='original', args=args)
+        else:
+            self.ghost1 = GhostModuleV2_sim(in_chs, mid_chs, relu=True, mode='attn', args=args)
+
+            # Depth-wise convolution
+        if self.stride > 1:
+            self.conv_dw = nn.Conv2d(mid_chs, mid_chs, dw_kernel_size, stride=stride,
+                                     padding=(dw_kernel_size - 1) // 2, groups=mid_chs, bias=False)
+            self.bn_dw = nn.BatchNorm2d(mid_chs)
+
+        # Squeeze-and-excitation
+        if has_se:
+            self.se = SqueezeExcitev2(mid_chs, se_ratio=se_ratio)
+        else:
+            self.se = None
+
+        self.ghost2 = GhostModuleV2_sim(mid_chs, out_chs, relu=False, mode='original', args=args)
+
+        # shortcut
+        if (in_chs == out_chs and self.stride == 1):
+            self.shortcut = nn.Sequential()
+        else:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_chs, in_chs, dw_kernel_size, stride=stride,
+                          padding=(dw_kernel_size - 1) // 2, groups=in_chs, bias=False),
+                nn.BatchNorm2d(in_chs),
+                nn.Conv2d(in_chs, out_chs, 1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(out_chs),
+            )
+
+        self.DWconv1x1 = DWConv(in_chs, mid_chs, 1, 1)
+        self.DWconv3x3 = DWConv(in_chs, mid_chs, 3, 1)
+    def forward(self, x):
+        residual = x
+        x = self.ghost1(x) + self.DWconv1x1(x) + self.DWconv3x3(x)
+        if self.stride > 1:
+            x = self.conv_dw(x)
+            x = self.bn_dw(x)
+        if self.se is not None:
+            x = self.se(x)
+        x = self.ghost2(x)
+        x += self.shortcut(residual)
+        return x
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape
-    net = ema_2(64)
+    net = GhostBottleneckV2_sim(64,40, 72, 3, 2, 0.25)
     y = net(x)
     print(y.size())
