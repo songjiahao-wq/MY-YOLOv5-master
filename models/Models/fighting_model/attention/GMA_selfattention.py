@@ -16,7 +16,11 @@ __all__ = [
     "groupmixformer_small",
     "groupmixformer_base",
 ]
-
+"""
+标题：Advancing Vision Transformers with Group-Mix Attention
+论文：https://arxiv.org/pdf/2311.15157.pdf
+源码：https://github.com/AILab-CVC/GroupMixFormer
+"""
 
 class Mlp(nn.Module):
     """ Feed-forward network (FFN, a.k.a. MLP) class. """
