@@ -50,7 +50,10 @@ if __name__ == "__main__":
     imgpath = 'VOCdevkit/JPEGImages'
     xmlpath = 'VOCdevkit/Annotations'
     txtpath = 'VOCdevkit/txt'
-    
+    if not os.path.exists(imgpath):
+        os.makedirs(imgpath, exist_ok=True)
+    if not os.path.exists(xmlpath):
+        os.makedirs(xmlpath, exist_ok=True)
     if not os.path.exists(txtpath):
         os.makedirs(txtpath, exist_ok=True)
     
