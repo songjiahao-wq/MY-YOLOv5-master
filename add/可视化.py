@@ -1,13 +1,18 @@
 import imutils
 import os
 import cv2
-img_path = r'D:\songjiahao\DATA\smokke\VOC\AUG\Augimages2/'
-label_path = r'D:\songjiahao\DATA\smokke\VOC\AUG\labels/'
+import numpy as np
+img_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\JPEGImages/'
+label_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\labels/'
 f = os.listdir(img_path)
 label_id = []
+def cv_imread(file_path):
+    cv_img = cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    return cv_img
+
 def paint(label_file, img_file):
     #读取照片
-    img = cv2.imread(img_file)
+    img = cv_imread(img_file)
 
     img_h, img_w, _ = img.shape
     with open(label_file, 'r') as f:
