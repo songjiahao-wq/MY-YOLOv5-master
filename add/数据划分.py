@@ -4,10 +4,10 @@ import random
 import os
 
 # 原始路径
-image_original_path = r'D:\xian_yu\road_defect\images/'
-label_original_path = r'D:\xian_yu\road_defect\labels/'
+image_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\JPEGImages/'
+label_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\labels/'
 # 复制文件总路径
-src_root = r'D:\xian_yu\road_defect_yolo/'
+src_root = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\data_yolo/'
 # 训练集路径
 train_image_path = src_root + '/images/train/'
 train_label_path = src_root + '/labels/train/'
@@ -20,8 +20,8 @@ test_label_path = src_root + '/labels/test/'
 
 # 数据集划分比例，训练集75%，验证集15%，测试集15%
 train_percent = 0.80
-val_percent = 0.2
-test_percent = 0.0
+val_percent = 0.1
+test_percent = 0.1
 # 数据集划分数量，训练集800，验证集800，测试集800
 # num_train = 850
 # num_val = 800
@@ -65,8 +65,8 @@ def main():
     # 检查两个列表元素是否有重合的元素
     set_c = set(val_test) & set(val)
     list_c = list(set_c)
-    print(list_c)
-    print(len(list_c))
+    # print(list_c)
+    # print(len(list_c))
 
     # print("训练集数目：{}, 验证集数目：{},测试集数目：{}".format(len(train), len(val), len(val_test) - len(val)))
     for i in list_all_txt:
@@ -89,14 +89,15 @@ def main():
                 dst_val_Label = val_label_path + name + '.txt'
                 shutil.copyfile(srcImage, dst_val_Image)
                 shutil.copyfile(srcLabel, dst_val_Label)
+
+        else:
+            if os.path.exists(srcImage):
+                dst_test_Image = test_image_path + name + '.jpg'
+                dst_test_Label = test_label_path + name + '.txt'
+                shutil.copyfile(srcImage, dst_test_Image)
+                shutil.copyfile(srcLabel, dst_test_Label)
             else:
                 print(srcImage)
-        else:
-            dst_test_Image = test_image_path + name + '.jpg'
-            dst_test_Label = test_label_path + name + '.txt'
-            shutil.copyfile(srcImage, dst_test_Image)
-            shutil.copyfile(srcLabel, dst_test_Label)
-
 
 if __name__ == '__main__':
     main()
