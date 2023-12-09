@@ -4,24 +4,24 @@ import random
 import os
 
 # 原始路径
-image_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\JPEGImages/'
-label_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\labels/'
+image_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\smoking detection.v1-smoking-detection-v1.yolov5pytorch\train\images/'
+label_original_path = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\smoking detection.v1-smoking-detection-v1.yolov5pytorch\train\labels/'
 # 复制文件总路径
-src_root = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\打手机2000\data_yolo/'
+src_root = r'D:\xian_yu\xianyun_lunwen\吸烟和打手机识别\大论文抽打数据集\smoking detection.v1-smoking-detection-v1.yolov5pytorch\train\data_yolo/'
 # 训练集路径
-train_image_path = src_root + '/images/train/'
-train_label_path = src_root + '/labels/train/'
+train_image_path = src_root + '/train/images/'
+train_label_path = src_root + '/train/labels/'
 # 验证集路径
-val_image_path = src_root + '/images/val/'
-val_label_path = src_root + '/labels/val/'
+val_image_path = src_root + '/val/images/'
+val_label_path = src_root + '/val/labels/'
 # 测试集路径
-test_image_path = src_root + '/images/test/'
-test_label_path = src_root + '/labels/test/'
+test_image_path = src_root + '/test/images/'
+test_label_path = src_root + '/test/labels/'
 
 # 数据集划分比例，训练集75%，验证集15%，测试集15%
-train_percent = 0.80
-val_percent = 0.1
-test_percent = 0.1
+train_percent = 0.32
+val_percent = 0.05
+test_percent = 0.63
 # 数据集划分数量，训练集800，验证集800，测试集800
 # num_train = 850
 # num_val = 800
