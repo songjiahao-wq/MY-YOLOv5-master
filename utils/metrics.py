@@ -307,7 +307,7 @@ AlphaIoU理论上与Focal_EIoU没有直接的冲突，但是作者这边没有�
 """
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=False, EIoU=False, WIoU=False, Focal=False,
-              MPDIoU=False, alpha=1, gamma=0.5, scale=False, eps=1e-7):
+              MPDIoU=False, ShapeIoU=False, alpha=1, gamma=0.5, scale=False, eps=1e-7):
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
 
     # Get the coordinates of bounding boxes
@@ -337,7 +337,7 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
     if CIoU or DIoU or GIoU or EIoU or SIoU or WIoU or MPDIoU:
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
-        if CIoU or DIoU or EIoU or SIoU or WIoU or MPDIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+        if CIoU or DIoU or EIoU or SIoU or WIoU or MPDIoU or ShapeIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = (cw ** 2 + ch ** 2) ** alpha + eps  # convex diagonal squared
             rho2 = (((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (
                         b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4) ** alpha  # center dist ** 2
@@ -396,6 +396,26 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
                         (rho2 / c2)), iou  # WIoU https://arxiv.org/abs/2301.10051
                 else:
                     return iou, torch.exp((rho2 / c2))  # WIoU v1
+            elif ShapeIoU:
+                # Shape-Distance    #Shape-Distance    #Shape-Distance    #Shape-Distance    #Shape-Distance    #Shape-Distance    #Shape-Distance
+                ww = 2 * torch.pow(w2, scale) / (torch.pow(w2, scale) + torch.pow(h2, scale))
+                hh = 2 * torch.pow(h2, scale) / (torch.pow(w2, scale) + torch.pow(h2, scale))
+                cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex width
+                ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height
+                c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
+                center_distance_x = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2) / 4
+                center_distance_y = ((b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4
+                center_distance = hh * center_distance_x + ww * center_distance_y
+                distance = center_distance / c2
+
+                # Shape-Shape    #Shape-Shape    #Shape-Shape    #Shape-Shape    #Shape-Shape    #Shape-Shape    #Shape-Shape    #Shape-Shape
+                omiga_w = hh * torch.abs(w1 - w2) / torch.max(w1, w2)
+                omiga_h = ww * torch.abs(h1 - h2) / torch.max(h1, h2)
+                shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
+
+                # Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU    #Shape-IoU
+                iou = iou - distance - 0.5 * (shape_cost)
+                return iou  # IoU
             if Focal:
                 return iou - rho2 / c2, torch.pow(inter / (union + eps), gamma)  # Focal_DIoU
             else:
