@@ -60,17 +60,16 @@ class MemoryEfficientSwish(nn.Module):
     def forward(self, x):
         return SwishImplementation.apply(x)
 
-class Concat_bifpn(nn.Module):
+class Concat_bifpn_2(nn.Module):
     # Concatenate a list of tensors along dimension
     def __init__(self, c1, c2):
-        super(Concat_bifpn, self).__init__()
+        super(Concat_bifpn_2, self).__init__()
         self.w1_weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.w2_weight = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
        # self.w3 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
         self.epsilon = 0.0001
         self.conv = Conv(c1, c2, 1 , 1 , 0 )
         # self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
-        # self.act= nn.ReLU()
+        # self.act= nn.Mish()
         self.act = MemoryEfficientSwish()
     def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat
         # print("bifpn:",x.shape)
@@ -78,12 +77,27 @@ class Concat_bifpn(nn.Module):
             w = self.w1_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
-            # LOGGER.info(f'w1_weight {w}')
-        elif len(x) == 3:
+        # elif len(x) == 4:
+        #     w = self.w3
+        #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
+        #     x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] *x[2] + weight[3]*x[3] ))
+        return x
+class Concat_bifpn_3(nn.Module):
+    # Concatenate a list of tensors along dimension
+    def __init__(self, c1, c2):
+        super(Concat_bifpn_3, self).__init__()
+        self.w2_weight = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+       # self.w3 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.epsilon = 0.0001
+        self.conv = Conv(c1, c2, 1 , 1 , 0 )
+        # self.conv = nn.Conv2d(c1, c2, kernel_size=1, stride=1, padding=0)
+        # self.act= nn.SiLU()
+        self.act = MemoryEfficientSwish()
+    def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat
+        if len(x) == 3:
             w = self.w2_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
-            # LOGGER.info(f'w2_weight {w}')
         # elif len(x) == 4:
         #     w = self.w3
         #     weight = w / (torch.sum(w, dim=0) + self.epsilon)
@@ -130,7 +144,7 @@ class LightweightMLP(nn.Module):
 
         # MLP with one hidden layer
         self.fc1 = nn.Linear(int(in_channels * scale_factor), hidden_channels)
-        self.activation = nn.ReLU()
+        self.activation = nn.SiLU()
         self.fc2 = nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x):
