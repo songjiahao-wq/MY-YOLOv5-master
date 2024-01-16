@@ -496,7 +496,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 args[3] = make_divisible(args[3] * gw, 8)
         elif m is Contract:
             c2 = ch[f] * args[0] ** 2
-        elif m is Concat_bifpn:
+        elif m in {Concat_bifpn_2, Concat_bifpn_3}:
             c2 = max([ch[x] for x in f])
         elif m is Concat_bifpn_cat:
             c2 = sum(ch[x] for x in f)
