@@ -71,3 +71,9 @@ yolov5s-sub-pixel convolution.yaml
 
 # TODO 添加
 1. models/Models/fighting_model/attention/DAT.py
+
+# 注意力
+1. DPAG注意力和Feature Enhancement Module
+https://www.mdpi.com/2073-4395/13/7/1824
+![img_1.png](models/Models/Attention/图/img_1.png)
+![img_2.png](models/Models/Attention/图/img.png)
