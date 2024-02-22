@@ -77,3 +77,5 @@ yolov5s-sub-pixel convolution.yaml
 https://www.mdpi.com/2073-4395/13/7/1824
 ![img_1.png](models/Models/Attention/图/img_1.png)
 ![img_2.png](models/Models/Attention/图/img.png)
+Feature Enhancement Module
+![img_3.png](models/Models/Attention/图/img_2.png)
