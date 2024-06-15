@@ -485,6 +485,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
+        elif m is MSFFM_AttentionModule:
+            c2 = ch[-1]
         elif m is ADD:
             c2 = sum([ch[x] for x in f]) // 2
         # TODO: channel, gw, gd
@@ -548,7 +550,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/2200/yolov5-Ghostv2-vit1.yaml',
+    parser.add_argument('--cfg', type=str, default=r'D:\my_job\MY_Github\MY-YOLOv5-master\models\yolov5s-MSFFM.yaml',
                         help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
