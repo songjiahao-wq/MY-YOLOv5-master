@@ -18,6 +18,7 @@ from models.Models.fighting_model.backbone.Ghostnetv2 import ghostnetv2_model
 from models.Models.fighting_model.backbone.Res2net import Bottle2neck
 from models.Models.fighting_model.backbone.VanillaNet import VanillaBlock, vanillanet_5
 from models.Models.fighting_model.backbone.repghost import RepGhostBottleneck
+from models.Models.fighting_model.backbone.mobilenetv4 import create_mobilenetv4
 
 from models.Models.fighting_model.attention.EVCBlock import EVCBlock
 from models.RFAexp.DEF import *

@@ -142,6 +142,7 @@ class BaseModel(nn.Module):
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
+    ## *** timm-addition ***
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
         self.GFLOPS = 0
@@ -517,6 +518,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m in [VanillaBlock, vanillanet_5]:
             m = m(*args)
             c2 = m.channel
+        elif m in [create_mobilenetv4]:
+            m = create_mobilenetv4(*args)
+            c2 = m.channel
         else:
             c2 = ch[f]
         ## *** timm-addition ***
@@ -550,12 +554,12 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'D:\my_job\MY_Github\MY-YOLOv5-master\models\yolov5s-MSFFM.yaml',
+    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5s-mobilenetv4-small.yaml',
                         help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
-    parser.add_argument('--line-profile', action='store_true', default=True, help='profile model speed layer by layer')
+    parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')
     opt = parser.parse_args()
     opt.cfg = check_yaml(opt.cfg)  # check YAML
