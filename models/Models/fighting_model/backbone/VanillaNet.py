@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import weight_init, DropPath
+from timm.models.layers import trunc_normal_, DropPath
 import numpy as np
 
 __all__ = ['vanillanet_5', 'vanillanet_6', 'vanillanet_7', 'vanillanet_8', 'vanillanet_9', 'vanillanet_10', 'vanillanet_11', 'vanillanet_12', 'vanillanet_13', 'vanillanet_13_x1_5', 'vanillanet_13_x1_5_ada_pool']
@@ -21,7 +21,7 @@ class activation(nn.ReLU):
         self.bn = nn.BatchNorm2d(dim, eps=1e-6)
         self.dim = dim
         self.act_num = act_num
-        weight_init.trunc_normal_(self.weight, std=.02)
+        trunc_normal_(self.weight, std=.02)
 
     def forward(self, x):
         if self.deploy:
@@ -155,7 +155,7 @@ class VanillaNet(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
-            weight_init.trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=.02)
             nn.init.constant_(m.bias, 0)
 
     def change_act(self, m):
