@@ -28,7 +28,7 @@ class YOLOV5TorchObjectDetector(nn.Module):
         self.confidence = confidence
         self.iou_thresh = iou_thresh
         self.agnostic = agnostic_nms
-        self.model = attempt_load(model_weight, inplace=False, fuse=False)
+        self.model = attempt_load(model_weight, device=device, inplace=False, fuse=False)
         self.model.requires_grad_(True)
         self.model.to(device)
 
@@ -50,7 +50,6 @@ class YOLOV5TorchObjectDetector(nn.Module):
     def non_max_suppression(prediction, logits, conf_thres=0.3, iou_thres=0.45, classes=None, agnostic=False,
                             multi_label=False, labels=(), max_det=300):
         """Runs Non-Maximum Suppression (NMS) on inference and logits results
-
         Returns:
              list of detections, on (n,6) tensor per image [xyxy, conf, cls] and pruned input logits (n, number-classes)
         """
@@ -160,7 +159,9 @@ class YOLOV5TorchObjectDetector(nn.Module):
                     self.confidences[i].append(round(conf.item(), 2))
                     cls = int(cls.item())
                     self.classes[i].append(cls)
-                    if self.names is not None:
+                    if cls>=len(self.names):
+                        continue
+                    if self.names is not None :
                         self.class_names[i].append(self.names[cls])
                     else:
                         self.class_names[i].append(cls)
@@ -176,4 +177,3 @@ class YOLOV5TorchObjectDetector(nn.Module):
         img = torch.from_numpy(img).to(self.device)
         img = img / 255.0
         return img
-
