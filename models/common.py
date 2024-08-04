@@ -5723,6 +5723,66 @@ class GhostBottleneckV2_sim(nn.Module):
         x = self.ghost2(x)
         x += self.shortcut(residual)
         return x
+
+# https://github.com/DingXiaoH/DiverseBranchBlock/blob/main/dbb_transforms.py
+class Bottleneck_DBB(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+        """Initializes a standard bottleneck layer with optional shortcut and group convolution, supporting channel
+        expansion.
+        """
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = DiverseBranchBlock(c_, c2, 3, 1, padding=1, nonlinear=nn.SiLU())
+        self.act = nn.SiLU()
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """Processes input through two convolutions, optionally adds shortcut if channel dimensions match; input is a
+        tensor.
+        """
+        # return x + self.act(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
+        return x + self.act(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
+
+class C3DBB(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        """Initializes C3x module with cross-convolutions, extending C3 with customizable channel dimensions, groups,
+        and expansion.
+        """
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_DBB(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+
+class Bottleneck_acb(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+        """Initializes a standard bottleneck layer with optional shortcut and group convolution, supporting channel
+        expansion.
+        """
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = ACBlock(c_, c2, 3, 1, padding=1)
+        self.act = nn.SiLU()
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """Processes input through two convolutions, optionally adds shortcut if channel dimensions match; input is a
+        tensor.
+        """
+        return x + self.act(self.cv2(self.cv1(x))) if self.add else self.cv2(self.cv1(x))
+
+class C3acb(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        """Initializes C3x module with cross-convolutions, extending C3 with customizable channel dimensions, groups,
+        and expansion.
+        """
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(Bottleneck_acb(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
 if __name__ =="__main__":
     x = torch.randn(1, 64, 20, 20)
     b, c, h, w = x.shape

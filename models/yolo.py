@@ -215,6 +215,8 @@ class BaseModel(nn.Module):
                     m.mlp = re_mlp
             if hasattr(m, ('RepGhostModule')):
                 m.switch_to_deploy()
+            if hasattr(m, 'switch_to_deploy'):
+                m.switch_to_deploy()
         self.info()
         return self
 
@@ -408,7 +410,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             SCConv, nn.ConvTranspose2d, conv_bn_hswish, MobileNetV3_InvertedResidual, MobileNet_Block, DepthSepConv,
             ShuffleNetV2_InvertedResidual, Conv_maxpool, InvertedResidual, ConvBNReLU, PatchEmbed, BasicStage,
             PatchMerging,
+
             MV2Block, MobileViTBlock, C3Ghost2,
+            # Conv
+            DiverseBranchBlock,
+            # C3
             CTR3, C3STR, C3_DCNv2, CoordConv, CSPStage, C3SPPAF, C3_Faster, PConv, C3PConv, SCConv, C3_MDConv, C2f,
             SPPF_ATT, FEM, GhostBottleneckv1, GhostBottleneckV2, ghostnetv2_model,
             C3_Bottleneck_ATT, C3_ODConv, C3_CoordConv, C3_DSConv, C3_CondConv, C3_DynamicConv,
@@ -416,7 +422,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             DeformCAConv, DeformCAConv2, DeformCAMConv, PSA_sConv, DySnakeConv, DySnakeConv2,
             SKConv, CAConv2, CAConv3, DyMCAConv, SKAttentionConv, C3_Res2, C3_Res2_2, C3_vanillaBlock, C3_2,
             DeformConv, DeformCAMConv, DeformCBAMConv, CAGSConv, MMF, PoolingUpsampleModel, C3_ATT,
-            C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3_DySnake}:  # 添加模块
+            C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3_DySnake, C3DBB, C3acb}:  # 添加模块
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -426,7 +432,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      C3CA, C3ECA, C3CAAM, C3STR, C3_DCNv2, CSPStage, C3SPPAF, C3PConv, C3_Bottleneck_ATT, C3_Res2,
                      C3_ODConv, C3_Res2_2, C3_CoordConv,
                      C3_DSConv, C3_CondConv, C3_DynamicConv, C3_vanillaBlock, C3_2, C3_ATT,
-                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2}:  # 添加模块
+                     C3_RepViT1, C3_RepViT2, C3_RepViT3, C3_ScSCConv, C3Ghost2, C3DBB, C3acb}:  # 添加模块
                 args.insert(2, n)  # number of repeats
                 n = 1
 
@@ -554,7 +560,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'../cfg/Lightmodel/yolov5s-mobilenetv4-small.yaml',
+    parser.add_argument('--cfg', type=str, default=r'../cfg/yolov5s-Improved/yolov5s_acb.yaml',
                         help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')

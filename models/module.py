@@ -41,6 +41,9 @@ from models.Models.fighting_model.conv.ODConv import ODConv2d
 from models.Models.fighting_model.conv.CondConv import CondConv
 from models.Models.fighting_model.conv.DynamicConv import DynamicConv
 from models.Models.fighting_model.conv.DySnakeConv import DySnakeConv, DySnakeConv2
+from models.Models.fighting_model.conv.DBB import DiverseBranchBlock
+from models.Models.fighting_model.conv.ACnet import ACBlock
+
 
 from models.Models.fighting_model.attention.SEAttention import SEAttention  # se = SEAttention(channel=512,reduction=8)
 from models.Models.fighting_model.attention.SKAttention import SKAttention  # se = SKAttention(channel=512,reduction=8)
